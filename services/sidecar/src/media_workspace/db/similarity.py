@@ -275,7 +275,7 @@ def confirm_similarity_group(
     if group is None:
         raise ValueError(f"unknown similarity group: {group_id}")
     kind = str(group["kind"])
-    if kind not in {"exact", "compressed_family", "crop_family"}:
+    if kind not in {"exact", "compressed_family", "crop_family", "mixed"}:
         raise ValueError(f"{kind} groups cannot be attached as one image family")
     member_ids = [str(member["asset_id"]) for member in group["members"]]
     keeper_id = keeper_asset_id or str(group["representative_asset_id"])
@@ -285,6 +285,7 @@ def confirm_similarity_group(
         "exact": "duplicate_of",
         "compressed_family": "compressed_of",
         "crop_family": "crop_of",
+        "mixed": "related_variant",
     }[kind]
     try:
         set_id = merge_resource_sets(
@@ -295,6 +296,7 @@ def confirm_similarity_group(
                 "exact": "duplicate",
                 "compressed_family": "compressed",
                 "crop_family": "crop",
+                "mixed": "related",
             }[kind],
             commit=False,
         )
@@ -302,11 +304,17 @@ def confirm_similarity_group(
             asset_id = str(member["asset_id"])
             if asset_id == keeper_id:
                 continue
+            member_relation = str(member["relation"])
+            member_link_type = {
+                "duplicate": "duplicate_of",
+                "compressed_of": "compressed_of",
+                "crop_of": "crop_of",
+            }.get(member_relation, relation_type)
             link_assets(
                 connection,
                 parent_asset_id=keeper_id,
                 child_asset_id=asset_id,
-                relation_type=relation_type,
+                relation_type=member_link_type,
                 confidence=float(member["score"]),
                 confirmed_by="user",
                 recipe_json=member["evidence"],

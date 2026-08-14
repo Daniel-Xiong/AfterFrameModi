@@ -3,7 +3,7 @@ import { Check, Copy, FolderInput, Link2, LoaderCircle, RefreshCw, ScanSearch, T
 import { useTranslation } from "react-i18next";
 import { formatBytes, localFileUrl } from "../utils/format";
 
-const ATTACHABLE = new Set(["exact", "compressed_family", "crop_family"]);
+const ATTACHABLE = new Set(["exact", "compressed_family", "crop_family", "mixed"]);
 
 function relationLabel(t, kind) {
   return t(`duplicates.kind.${kind}`, { defaultValue: kind.replaceAll("_", " ") });

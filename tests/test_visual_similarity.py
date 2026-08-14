@@ -13,6 +13,7 @@ from media_workspace.visual_similarity import (
     VISUAL_ALGORITHM_VERSION,
     aligned_error,
     band_neighbors,
+    bounded_crop_match,
     fixed_region_rects,
     hamming_distance,
     perceptual_hash,
@@ -71,6 +72,20 @@ class VisualSimilarityTest(unittest.TestCase):
         self.assertEqual(len(signatures), len(regions))
         self.assertLessEqual(len(signatures), 16)
         self.assertTrue(all(len(item["bands"]) == 4 for item in signatures))
+
+    def test_bounded_crop_match_finds_off_center_crop_with_operation_cap(self) -> None:
+        parent = _fixture_image()
+        child = parent.crop((210, 60, 570, 420)).rotate(
+            2,
+            resample=Image.Resampling.BICUBIC,
+            expand=False,
+        )
+
+        result = bounded_crop_match(child, parent)
+
+        self.assertLess(result["error"], 0.16)
+        self.assertIsNotNone(result["normalized_rect"])
+        self.assertLessEqual(result["operations"], 5 * 25 + 4 * 3)
 
     def test_visual_truth_reports_threshold_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

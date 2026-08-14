@@ -64,6 +64,9 @@ class VisualThresholds:
     burst_window_seconds: float = 1.0
     crop_parent_limit: int = 16
     crop_region_limit: int = 4
+    crop_error_max: float = 0.16
+    max_cluster_members: int = 50
+    max_neighbors_per_asset: int = 16
 
 
 @dataclass(slots=True)

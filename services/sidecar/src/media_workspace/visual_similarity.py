@@ -145,3 +145,80 @@ def region_hashes(
             }
         )
     return output
+
+
+def bounded_crop_match(
+    child_source: Path | str | Image.Image,
+    parent_source: Path | str | Image.Image,
+    *,
+    scales: tuple[float, ...] = (0.9, 0.8, 0.7, 0.6, 0.5),
+    grid_size: int = 5,
+    retain: int = 4,
+    angles: tuple[float, ...] = (-3.0, 0.0, 3.0),
+) -> dict[str, object]:
+    """Coarse-to-fine crop confirmation with fixed operation bounds."""
+    child = ImageOps.exif_transpose(_open_image(child_source)).convert("L")
+    parent = ImageOps.exif_transpose(_open_image(parent_source)).convert("L")
+    parent_width, parent_height = parent.size
+    child_ratio = child.width / child.height
+    coarse_child = np.asarray(child.resize((64, 64), Image.Resampling.LANCZOS), dtype=np.float32)
+    coarse: list[tuple[float, tuple[int, int, int, int]]] = []
+    operations = 0
+    for scale in scales:
+        crop_width = max(16, round(parent_width * scale))
+        crop_height = max(16, round(crop_width / child_ratio))
+        if crop_height > parent_height:
+            crop_height = max(16, round(parent_height * scale))
+            crop_width = max(16, round(crop_height * child_ratio))
+        if crop_width > parent_width or crop_height > parent_height:
+            continue
+        x_steps = np.linspace(0, parent_width - crop_width, grid_size, dtype=int)
+        y_steps = np.linspace(0, parent_height - crop_height, grid_size, dtype=int)
+        for x in x_steps:
+            for y in y_steps:
+                box = (int(x), int(y), int(x + crop_width), int(y + crop_height))
+                region = parent.crop(box).resize((64, 64), Image.Resampling.LANCZOS)
+                error = float(
+                    np.mean(np.abs(np.asarray(region, dtype=np.float32) - coarse_child)) / 255.0
+                )
+                coarse.append((error, box))
+                operations += 1
+    coarse.sort(key=lambda item: item[0])
+    finalists = coarse[: max(1, retain)]
+    fine_child = child.resize((128, 128), Image.Resampling.LANCZOS)
+    best: tuple[float, tuple[int, int, int, int], float] | None = None
+    for _, box in finalists:
+        region = parent.crop(box).resize((128, 128), Image.Resampling.LANCZOS)
+        for angle in angles:
+            rotated = (
+                fine_child
+                if angle == 0
+                else fine_child.rotate(angle, resample=Image.Resampling.BICUBIC, expand=False)
+            )
+            error = float(
+                np.mean(
+                    np.abs(
+                        np.asarray(region, dtype=np.float32)
+                        - np.asarray(rotated, dtype=np.float32)
+                    )
+                )
+                / 255.0
+            )
+            operations += 1
+            candidate = (error, box, angle)
+            if best is None or candidate[0] < best[0]:
+                best = candidate
+    if best is None:
+        return {"error": 1.0, "normalized_rect": None, "angle": 0.0, "operations": operations}
+    error, box, angle = best
+    return {
+        "error": round(error, 6),
+        "normalized_rect": [
+            box[0] / parent_width,
+            box[1] / parent_height,
+            (box[2] - box[0]) / parent_width,
+            (box[3] - box[1]) / parent_height,
+        ],
+        "angle": angle,
+        "operations": operations,
+    }

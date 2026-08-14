@@ -19,7 +19,7 @@ from media_workspace.db import (
     upsert_preview_entry,
 )
 from media_workspace.job_runner import run_visual_match_job
-from media_workspace.visual_cleanup import run_visual_cleanup
+from media_workspace.visual_cleanup import _bounded_edges, _complete_link_components, run_visual_cleanup
 from media_workspace.visual_index import index_visual_signatures
 from media_workspace.visual_matcher import recall_visual_candidates
 
@@ -165,6 +165,30 @@ class VisualCleanupTest(unittest.TestCase):
         ).fetchone()
         self.assertEqual(stored["status"], "succeeded")
         self.assertEqual(stored["progress"], 1.0)
+
+    def test_complete_link_does_not_bridge_dissimilar_endpoints(self) -> None:
+        def edge(left: str, right: str, score: float):
+            return {
+                "left": {"asset_id": left},
+                "right": {"asset_id": right},
+                "classification": {
+                    "kind": "near_duplicate",
+                    "score": score,
+                    "relation": "visually_similar",
+                },
+            }
+
+        chain = [edge("a", "b", 0.9), edge("b", "c", 0.89)]
+        bounded = _bounded_edges(chain, max_neighbors=4)
+        groups = _complete_link_components(bounded, max_members=10)
+
+        self.assertEqual(len(groups), 1)
+        member_ids = {
+            row[side]["asset_id"]
+            for row in groups[0]
+            for side in ("left", "right")
+        }
+        self.assertEqual(member_ids, {"a", "b"})
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from PIL import Image
 
 from .catalog import CatalogPaths
 from .config import VisualThresholds
-from .visual_similarity import aligned_error, band_neighbors, hamming_distance, parse_phash
+from .visual_similarity import aligned_error, band_neighbors, bounded_crop_match, hamming_distance, parse_phash
 
 
 def _parse_time(value: object) -> datetime | None:
@@ -290,6 +290,27 @@ def classify_visual_candidate(
         else None
     )
     evidence["aspect_delta"] = aspect_delta
+    candidate_pixels = int(candidate.get("meta_width") or 0) * int(candidate.get("meta_height") or 0)
+    probe_pixels = int(probe.get("meta_width") or 0) * int(probe.get("meta_height") or 0)
+    should_try_crop = (
+        bool(candidate.get("region_matches"))
+        and candidate_pixels >= probe_pixels
+        and probe_preview is not None
+        and candidate_preview is not None
+    )
+    if should_try_crop:
+        crop = bounded_crop_match(probe_preview, candidate_preview)
+        evidence["crop_operations"] = crop["operations"]
+        evidence["crop_error"] = crop["error"]
+        if crop["normalized_rect"] is not None and float(crop["error"]) <= thresholds.crop_error_max:
+            evidence["crop_rect"] = crop["normalized_rect"]
+            evidence["crop_angle"] = crop["angle"]
+            return {
+                "kind": "crop_family",
+                "relation": "crop_of",
+                "score": max(0.0, 1.0 - float(crop["error"])),
+                "evidence": evidence,
+            }
     if aspect_delta is not None and aspect_delta > thresholds.aspect_tolerance:
         region_matches = candidate.get("region_matches") or []
         if region_matches:
