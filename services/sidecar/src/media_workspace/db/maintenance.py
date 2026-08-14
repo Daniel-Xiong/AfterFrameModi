@@ -388,6 +388,9 @@ def delete_image_asset_from_catalog(
     # The FK cascade would clear asset_locations but not its R*Tree row.
     delete_asset_location(connection, asset_id)
     connection.execute("DELETE FROM assets WHERE asset_id = ?", (asset_id,))
+    from .similarity import prune_empty_similarity_groups
+
+    prune_empty_similarity_groups(connection, commit=False)
 
     if commit:
         connection.commit()

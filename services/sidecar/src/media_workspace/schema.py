@@ -1,6 +1,6 @@
 # Catalog schema version. This is the only authoritative version declaration;
 # migration code and the public db package both import it from here.
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 SCHEMA_STATEMENTS = [
@@ -62,6 +62,97 @@ SCHEMA_STATEMENTS = [
         PRIMARY KEY (asset_id, root_id),
         FOREIGN KEY(asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE,
         FOREIGN KEY(root_id) REFERENCES catalog_roots(root_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS visual_signatures (
+        asset_id TEXT PRIMARY KEY,
+        phash TEXT NOT NULL,
+        phash_band0 INTEGER NOT NULL,
+        phash_band1 INTEGER NOT NULL,
+        phash_band2 INTEGER NOT NULL,
+        phash_band3 INTEGER NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        file_size INTEGER NOT NULL,
+        preview_fingerprint TEXT NOT NULL,
+        algorithm_version TEXT NOT NULL,
+        indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS visual_region_signatures (
+        asset_id TEXT NOT NULL,
+        region_kind TEXT NOT NULL,
+        normalized_rect_json TEXT NOT NULL,
+        phash TEXT NOT NULL,
+        phash_band0 INTEGER NOT NULL,
+        phash_band1 INTEGER NOT NULL,
+        phash_band2 INTEGER NOT NULL,
+        phash_band3 INTEGER NOT NULL,
+        algorithm_version TEXT NOT NULL,
+        indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (asset_id, region_kind),
+        FOREIGN KEY(asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS similarity_groups (
+        group_id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (
+            kind IN (
+                'exact', 'compressed_family', 'crop_family', 'burst',
+                'near_duplicate', 'raw_proposal', 'mixed'
+            )
+        ),
+        representative_asset_id TEXT,
+        total_bytes INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (
+            status IN ('pending', 'reviewed', 'dismissed', 'partial')
+        ),
+        probe_root_id TEXT,
+        algorithm_version TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at TEXT,
+        FOREIGN KEY(representative_asset_id) REFERENCES assets(asset_id) ON DELETE SET NULL,
+        FOREIGN KEY(probe_root_id) REFERENCES catalog_roots(root_id) ON DELETE SET NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS similarity_group_members (
+        group_id TEXT NOT NULL,
+        asset_id TEXT NOT NULL,
+        relation TEXT NOT NULL CHECK (
+            relation IN (
+                'source', 'compressed_of', 'crop_of', 'duplicate',
+                'burst_sibling', 'visually_similar', 'raw_candidate'
+            )
+        ),
+        parent_asset_id TEXT,
+        score REAL NOT NULL DEFAULT 0,
+        evidence_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (group_id, asset_id),
+        FOREIGN KEY(group_id) REFERENCES similarity_groups(group_id) ON DELETE CASCADE,
+        FOREIGN KEY(asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE,
+        FOREIGN KEY(parent_asset_id) REFERENCES assets(asset_id) ON DELETE SET NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS relocation_operations (
+        operation_id TEXT PRIMARY KEY,
+        asset_id TEXT NOT NULL,
+        source_path TEXT NOT NULL,
+        destination_path TEXT NOT NULL,
+        state TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK (mode IN ('move', 'archive')),
+        expected_size INTEGER,
+        expected_hash TEXT,
+        error_text TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE
     )
     """,
     """
@@ -185,6 +276,18 @@ SCHEMA_STATEMENTS = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_roots_type ON catalog_roots(root_type)",
     "CREATE INDEX IF NOT EXISTS idx_asset_root_memberships_root ON asset_root_memberships(root_id, asset_id)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_signatures_phash ON visual_signatures(phash)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_signatures_band0 ON visual_signatures(phash_band0)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_signatures_band1 ON visual_signatures(phash_band1)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_signatures_band2 ON visual_signatures(phash_band2)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_signatures_band3 ON visual_signatures(phash_band3)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_regions_band0 ON visual_region_signatures(phash_band0)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_regions_band1 ON visual_region_signatures(phash_band1)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_regions_band2 ON visual_region_signatures(phash_band2)",
+    "CREATE INDEX IF NOT EXISTS idx_visual_regions_band3 ON visual_region_signatures(phash_band3)",
+    "CREATE INDEX IF NOT EXISTS idx_similarity_groups_status ON similarity_groups(status, kind)",
+    "CREATE INDEX IF NOT EXISTS idx_similarity_members_asset ON similarity_group_members(asset_id)",
+    "CREATE INDEX IF NOT EXISTS idx_relocation_asset_state ON relocation_operations(asset_id, state)",
     "CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type)",
     "CREATE INDEX IF NOT EXISTS idx_assets_stem_key ON assets(stem_key)",
     "CREATE INDEX IF NOT EXISTS idx_assets_fingerprint ON assets(fingerprint)",

@@ -192,6 +192,27 @@ class SchemaMigrationTest(unittest.TestCase):
             SCHEMA_VERSION,
         )
 
+    def test_v10_adds_empty_similarity_indexes_without_backfill(self) -> None:
+        connection = create_v5_catalog()
+        self.addCleanup(connection.close)
+
+        init_db(connection)
+
+        for table in (
+            "visual_signatures",
+            "visual_region_signatures",
+            "similarity_groups",
+            "similarity_group_members",
+            "relocation_operations",
+        ):
+            self.assertIsNotNone(
+                connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                    (table,),
+                ).fetchone()
+            )
+            self.assertEqual(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 0)
+
     def test_failed_migration_rolls_back_schema_and_version(self) -> None:
         connection = create_v5_catalog()
         self.addCleanup(connection.close)
