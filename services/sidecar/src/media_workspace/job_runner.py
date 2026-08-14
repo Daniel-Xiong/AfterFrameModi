@@ -70,6 +70,7 @@ from .preview_service import PreviewService
 from .reverse_lookup import resolve_image
 from .reverse_lookup import resolve_image_batch
 from .scanner import enrich_raw_assets, scan_raw_directory
+from .visual_cleanup import run_visual_cleanup
 
 
 def _fraction(processed: int | None, total: int | None) -> float:
@@ -967,6 +968,109 @@ def run_preview_job(
             payload=payload,
             result={},
             progress=0.0,
+            error_text=str(error),
+        )
+        raise
+
+
+def run_visual_match_job(
+    connection,
+    catalog_path: Path,
+    job_id: str,
+    *,
+    probe_root_id: str,
+    gallery_scope: str = "catalog_except_probe",
+    include_raw_proposals: bool = True,
+) -> dict[str, object]:
+    payload = {
+        "probe_root_id": probe_root_id,
+        "gallery_scope": gallery_scope,
+        "include_raw_proposals": include_raw_proposals,
+        "phase": "visual_index",
+        "phase_label": "Index Visual Signatures",
+        "phase_index": 1,
+        "phase_count": 3,
+    }
+    update_job(connection, job_id, status="running", payload=payload, progress=0.0)
+    last_progress = 0.0
+    last_result: dict[str, object] = {}
+    try:
+        def checkpoint() -> None:
+            _check_cancel(connection, job_id)
+            _check_pause(connection, job_id)
+
+        def visual_progress(**update) -> None:
+            nonlocal last_progress, last_result
+            checkpoint()
+            phase = str(update.get("phase") or "visual_match")
+            phase_index = 1 if phase == "visual_index" else 2
+            processed = int(update.get("processed") or 0)
+            total = int(update.get("total") or 0)
+            within_phase = _fraction(processed, total)
+            last_progress = min(0.95, ((phase_index - 1) + within_phase) / 3)
+            active_payload = {
+                **payload,
+                "phase": phase,
+                "phase_label": "Index Visual Signatures" if phase == "visual_index" else "Match Similar Photos",
+                "phase_index": phase_index,
+            }
+            last_result = {"current_phase": {"key": phase, **update}}
+            update_job(
+                connection,
+                job_id,
+                payload=active_payload,
+                result=last_result,
+                progress=last_progress,
+                resume_cursor={"phase": phase, "processed": processed},
+            )
+
+        result = run_visual_cleanup(
+            connection,
+            ensure_catalog(catalog_path),
+            probe_root_id=probe_root_id,
+            gallery_scope=gallery_scope,
+            include_raw_proposals=include_raw_proposals,
+            progress_callback=visual_progress,
+            cancel_callback=checkpoint,
+        )
+        update_job(
+            connection,
+            job_id,
+            status="succeeded",
+            payload={**payload, "phase": None, "phase_label": None},
+            result={**result, "current_phase": None},
+            progress=1.0,
+            resume_cursor={},
+            error_text=None,
+        )
+        return result
+    except JobPaused:
+        paused = {**last_result, "paused": True}
+        update_job(
+            connection,
+            job_id,
+            status="paused",
+            payload=payload,
+            result=paused,
+            progress=last_progress,
+        )
+        return paused
+    except JobCancelled:
+        return _mark_cancelled(
+            connection,
+            job_id,
+            payload,
+            result=last_result,
+            progress=last_progress,
+        )
+    except Exception as error:
+        update_job(
+            connection,
+            job_id,
+            status="failed",
+            payload=payload,
+            result=last_result,
+            progress=last_progress,
             error_text=str(error),
         )
         raise

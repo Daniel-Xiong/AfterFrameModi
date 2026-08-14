@@ -39,6 +39,7 @@ from .db import (
     list_catalog_roots,
     list_image_assets,
     list_map_points,
+    list_similarity_groups,
     list_assets_for_preview,
     list_pending,
     assign_faces_to_group,
@@ -51,6 +52,7 @@ from .db import (
     set_person_group_cover,
     set_person_group_state,
     set_person_groups_state,
+    set_similarity_group_status,
     set_catalog_path,
     summary,
     upsert_catalog_root,
@@ -72,7 +74,7 @@ from .db import (
 )
 from .evaluation import evaluate_ground_truth
 from .ground_truth import export_ground_truth
-from .job_runner import run_ai_repaint_job, run_annotation_job, run_enrichment_job, run_import_job, run_people_index_job, run_preview_job
+from .job_runner import run_ai_repaint_job, run_annotation_job, run_enrichment_job, run_import_job, run_people_index_job, run_preview_job, run_visual_match_job
 from .preview_service import PreviewService
 from .metadata import extract_image_candidate, iso_mtime
 from .models import MatchDecision
@@ -418,7 +420,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_roots_parser.add_argument("--path", type=Path, action="append", required=True)
 
     create_job_parser = subparsers.add_parser("create-job", parents=[common])
-    create_job_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index"], required=True)
+    create_job_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index", "visual_match"], required=True)
     create_job_parser.add_argument("--payload-json", default="{}")
     create_job_parser.add_argument("--priority", type=int, default=50)
 
@@ -426,7 +428,7 @@ def build_parser() -> argparse.ArgumentParser:
     get_job_parser.add_argument("--job-id", required=True)
 
     latest_job_parser = subparsers.add_parser("latest-job", parents=[common])
-    latest_job_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index"])
+    latest_job_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index", "visual_match"])
 
     cancel_job_parser = subparsers.add_parser("cancel-job", parents=[common])
     cancel_job_parser.add_argument("--job-id", required=True)
@@ -447,7 +449,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("list-active-jobs", parents=[common])
 
     list_jobs_parser = subparsers.add_parser("list-jobs", parents=[common])
-    list_jobs_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index"])
+    list_jobs_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index", "visual_match"])
     list_jobs_parser.add_argument("--limit", type=int, default=20)
 
     list_people_groups_parser = subparsers.add_parser("list-people-groups", parents=[common])
@@ -515,6 +517,28 @@ def build_parser() -> argparse.ArgumentParser:
     run_preview_job_parser.add_argument("--asset-type", choices=["raw", "image"])
     run_preview_job_parser.add_argument("--limit", type=int)
     run_preview_job_parser.add_argument("--force", action="store_true")
+
+    run_visual_match_parser = subparsers.add_parser("run-visual-match-job", parents=[common])
+    run_visual_match_parser.add_argument("--job-id", required=True)
+    run_visual_match_parser.add_argument("--probe-root-id", required=True)
+    run_visual_match_parser.add_argument(
+        "--gallery-scope",
+        choices=["catalog_except_probe", "same_root"],
+        default="catalog_except_probe",
+    )
+    run_visual_match_parser.add_argument("--skip-raw-proposals", action="store_true")
+
+    list_similarity_parser = subparsers.add_parser("list-similarity-groups", parents=[common])
+    list_similarity_parser.add_argument(
+        "--status",
+        choices=["pending", "reviewed", "dismissed", "partial"],
+        default="pending",
+    )
+    list_similarity_parser.add_argument("--kind")
+    list_similarity_parser.add_argument("--limit", type=int, default=200)
+
+    dismiss_similarity_parser = subparsers.add_parser("dismiss-similarity-group", parents=[common])
+    dismiss_similarity_parser.add_argument("--group-id", required=True)
 
     run_people_index_parser = subparsers.add_parser("run-people-index-job", parents=[common])
     run_people_index_parser.add_argument("--job-id", required=True)
@@ -1282,6 +1306,40 @@ def _cmd_run_preview_job(args, connection, catalog, parser):
         force=args.force,
     )
     print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_run_visual_match_job(args, connection, catalog, parser):
+    payload = run_visual_match_job(
+        connection,
+        catalog.root,
+        args.job_id,
+        probe_root_id=args.probe_root_id,
+        gallery_scope=args.gallery_scope,
+        include_raw_proposals=not args.skip_raw_proposals,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_list_similarity_groups(args, connection, catalog, parser):
+    payload = list_similarity_groups(
+        connection,
+        status=args.status,
+        kind=args.kind,
+        limit=args.limit,
+    )
+    for group in payload:
+        for member in group["members"]:
+            relative = member.pop("preview_relative_path", None)
+            member["preview_path"] = str((catalog.root / relative).resolve()) if relative else None
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_dismiss_similarity_group(args, connection, catalog, parser):
+    changed = set_similarity_group_status(connection, args.group_id, "dismissed")
+    print(json.dumps({"group_id": args.group_id, "status": "dismissed", "changed": changed}))
     return 0
 
 
@@ -2056,6 +2114,9 @@ COMMAND_HANDLERS = {
     "run-import-job": _cmd_run_import_job,
     "run-enrichment-job": _cmd_run_enrichment_job,
     "run-preview-job": _cmd_run_preview_job,
+    "run-visual-match-job": _cmd_run_visual_match_job,
+    "list-similarity-groups": _cmd_list_similarity_groups,
+    "dismiss-similarity-group": _cmd_dismiss_similarity_group,
     "run-people-index-job": _cmd_run_people_index_job,
     "evaluate-ground-truth": _cmd_evaluate_ground_truth,
     "evaluate-visual-truth": _cmd_evaluate_visual_truth,
