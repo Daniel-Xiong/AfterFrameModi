@@ -173,6 +173,25 @@ class SchemaMigrationTest(unittest.TestCase):
         self.assertEqual(connection.execute("SELECT COUNT(*) FROM image_lookup_registry").fetchone()[0], 1)
         self.assertEqual(connection.execute("SELECT schema_version FROM catalog_info").fetchone()[0], SCHEMA_VERSION)
 
+    def test_v9_adds_explicit_root_scope_without_asset_scan(self) -> None:
+        connection = create_v5_catalog()
+        self.addCleanup(connection.close)
+
+        init_db(connection)
+
+        root = connection.execute(
+            "SELECT user_declared FROM catalog_roots WHERE root_id = 'root_legacy'"
+        ).fetchone()
+        self.assertEqual(root["user_declared"], 1)
+        self.assertEqual(
+            connection.execute("SELECT COUNT(*) FROM asset_root_memberships").fetchone()[0],
+            0,
+        )
+        self.assertEqual(
+            connection.execute("SELECT schema_version FROM catalog_info").fetchone()[0],
+            SCHEMA_VERSION,
+        )
+
     def test_failed_migration_rolls_back_schema_and_version(self) -> None:
         connection = create_v5_catalog()
         self.addCleanup(connection.close)

@@ -351,6 +351,36 @@ def _migrate_to_8(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_to_9(connection: sqlite3.Connection) -> None:
+    ensure_column(
+        connection,
+        "catalog_roots",
+        "user_declared",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    # Existing catalogs did not distinguish explicit roots from implicit
+    # per-directory roots. Preserve their visible roots; future registrations
+    # record the distinction precisely.
+    connection.execute("UPDATE catalog_roots SET user_declared = 1")
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS asset_root_memberships (
+            asset_id TEXT NOT NULL,
+            root_id TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (asset_id, root_id),
+            FOREIGN KEY(asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE,
+            FOREIGN KEY(root_id) REFERENCES catalog_roots(root_id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_asset_root_memberships_root "
+        "ON asset_root_memberships(root_id, asset_id)"
+    )
+
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     3: _migrate_to_3,
     4: _migrate_to_4,
@@ -358,6 +388,7 @@ MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     6: _migrate_to_6,
     7: _migrate_to_7,
     8: _migrate_to_8,
+    9: _migrate_to_9,
 }
 
 

@@ -14,6 +14,7 @@ from .analysis import analyze_metadata_coverage
 from .ai_repaint import DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, OPENAI_PROVIDER, list_provider_models, run_mock_repaint, run_nanobanana_repaint, run_openai_repaint
 from .db import (
     attach_asset_to_resource_set,
+    backfill_asset_root_memberships,
     cleanup_orphan_image_assets,
     confirm_match,
     connect,
@@ -1832,6 +1833,7 @@ def _cmd_catalog_roots(args, connection, catalog, parser):
             "root_type": row["root_type"],
             "path": row["path"],
             "is_active": bool(row["is_active"]),
+            "user_declared": bool(row["user_declared"]),
         }
         for row in list_catalog_roots(connection)
     ]
@@ -1840,8 +1842,18 @@ def _cmd_catalog_roots(args, connection, catalog, parser):
 
 
 def _cmd_register_roots(args, connection, catalog, parser):
+    root_ids: list[str] = []
     for root_path in args.path:
-        upsert_catalog_root(connection, args.root_type, root_path.resolve(), commit=False)
+        root_ids.append(
+            upsert_catalog_root(
+                connection,
+                args.root_type,
+                root_path.resolve(),
+                commit=False,
+                user_declared=True,
+            )
+        )
+    backfill_asset_root_memberships(connection, root_ids=root_ids, commit=False)
     connection.commit()
     payload = [
         {
@@ -1849,6 +1861,7 @@ def _cmd_register_roots(args, connection, catalog, parser):
             "root_type": row["root_type"],
             "path": row["path"],
             "is_active": bool(row["is_active"]),
+            "user_declared": bool(row["user_declared"]),
         }
         for row in list_catalog_roots(connection)
     ]

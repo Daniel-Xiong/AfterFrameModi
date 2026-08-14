@@ -123,6 +123,16 @@ def relink_asset(
             "WHERE image_asset_id = ? AND image_path = ?",
             (new_str, asset_id, old_path),
         )
+    elif str(row["asset_type"]) == "raw":
+        connection.execute(
+            "UPDATE raw_metadata_cache SET path = ?, cached_at = CURRENT_TIMESTAMP "
+            "WHERE raw_asset_id = ?",
+            (new_str, asset_id),
+        )
+
+    from .roots import assign_asset_root_membership
+
+    assign_asset_root_membership(connection, asset_id, commit=False)
 
     if commit:
         connection.commit()

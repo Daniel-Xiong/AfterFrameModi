@@ -1,6 +1,6 @@
 # Catalog schema version. This is the only authoritative version declaration;
 # migration code and the public db package both import it from here.
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 SCHEMA_STATEMENTS = [
@@ -19,6 +19,7 @@ SCHEMA_STATEMENTS = [
         root_type TEXT NOT NULL,
         path TEXT NOT NULL UNIQUE,
         is_active INTEGER NOT NULL DEFAULT 1,
+        user_declared INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -50,6 +51,17 @@ SCHEMA_STATEMENTS = [
         role TEXT NOT NULL,
         discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(asset_id) REFERENCES assets(asset_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS asset_root_memberships (
+        asset_id TEXT NOT NULL,
+        root_id TEXT NOT NULL,
+        relative_path TEXT NOT NULL,
+        assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (asset_id, root_id),
+        FOREIGN KEY(asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE,
+        FOREIGN KEY(root_id) REFERENCES catalog_roots(root_id) ON DELETE CASCADE
     )
     """,
     """
@@ -172,6 +184,7 @@ SCHEMA_STATEMENTS = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_roots_type ON catalog_roots(root_type)",
+    "CREATE INDEX IF NOT EXISTS idx_asset_root_memberships_root ON asset_root_memberships(root_id, asset_id)",
     "CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type)",
     "CREATE INDEX IF NOT EXISTS idx_assets_stem_key ON assets(stem_key)",
     "CREATE INDEX IF NOT EXISTS idx_assets_fingerprint ON assets(fingerprint)",
