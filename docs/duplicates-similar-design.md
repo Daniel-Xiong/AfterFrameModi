@@ -136,7 +136,21 @@ The first release gate targets at least `0.95` Recall@K and at most `0.02`
 false same-photo attachment on the curated negative set. Results must include
 the chosen `K`, algorithm version, thresholds, and fixture identity.
 
-## Non-negotiable compatibility
+## Release gates
+
+The following invariants are enforced by automated tests rather than documentation
+alone:
+
+- recall shortlists are capped at `K` per probe; visual confirmation never exceeds
+  `probe_count × K`;
+- `visual_match` jobs honour cooperative cancellation at asset boundaries;
+- RAW proposals never auto-bind; confirmation goes through `confirm_match`;
+- schema migrations do not hash or scan the image library;
+- `reverse_lookup` matcher behaviour remains unchanged.
+
+Synthetic benchmark fixtures report signature time, recall-query time, candidate
+counts, comparison-budget compliance, and optional peak memory via
+`visual_benchmark.benchmark_visual_cleanup`.
 
 - `reverse_lookup` thresholds and automatic RAW binding stay unchanged.
 - RAW visual proposals confirm only through the existing `confirm_match`.
