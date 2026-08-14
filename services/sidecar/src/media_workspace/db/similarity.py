@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import sqlite3
 from hashlib import sha1
+from pathlib import Path
 from typing import Iterable
 
 from ..visual_similarity import VISUAL_ALGORITHM_VERSION
+from .assets import confirm_match
 from .core import _json
+from .resource_sets import link_assets, merge_resource_sets
 
 
 def similarity_group_id(kind: str, asset_ids: Iterable[str], algorithm_version: str) -> str:
@@ -259,3 +262,116 @@ def prune_empty_similarity_groups(
     if commit:
         connection.commit()
     return int(changed)
+
+
+def confirm_similarity_group(
+    connection: sqlite3.Connection,
+    group_id: str,
+    *,
+    keeper_asset_id: str | None = None,
+    commit: bool = True,
+) -> dict[str, object]:
+    group = get_similarity_group(connection, group_id)
+    if group is None:
+        raise ValueError(f"unknown similarity group: {group_id}")
+    kind = str(group["kind"])
+    if kind not in {"exact", "compressed_family", "crop_family"}:
+        raise ValueError(f"{kind} groups cannot be attached as one image family")
+    member_ids = [str(member["asset_id"]) for member in group["members"]]
+    keeper_id = keeper_asset_id or str(group["representative_asset_id"])
+    if keeper_id not in member_ids:
+        raise ValueError("keeper must be a member of the similarity group")
+    relation_type = {
+        "exact": "duplicate_of",
+        "compressed_family": "compressed_of",
+        "crop_family": "crop_of",
+    }[kind]
+    try:
+        set_id = merge_resource_sets(
+            connection,
+            keeper_asset_id=keeper_id,
+            member_asset_ids=[asset_id for asset_id in member_ids if asset_id != keeper_id],
+            version_kind={
+                "exact": "duplicate",
+                "compressed_family": "compressed",
+                "crop_family": "crop",
+            }[kind],
+            commit=False,
+        )
+        for member in group["members"]:
+            asset_id = str(member["asset_id"])
+            if asset_id == keeper_id:
+                continue
+            link_assets(
+                connection,
+                parent_asset_id=keeper_id,
+                child_asset_id=asset_id,
+                relation_type=relation_type,
+                confidence=float(member["score"]),
+                confirmed_by="user",
+                recipe_json=member["evidence"],
+            )
+        set_similarity_group_status(connection, group_id, "reviewed", commit=False)
+        connection.execute(
+            "UPDATE similarity_groups SET representative_asset_id = ? WHERE group_id = ?",
+            (keeper_id, group_id),
+        )
+        if commit:
+            connection.commit()
+        return {
+            "group_id": group_id,
+            "status": "reviewed",
+            "keeper_asset_id": keeper_id,
+            "resource_set_id": set_id,
+            "relation_type": relation_type,
+        }
+    except Exception:
+        if commit:
+            connection.rollback()
+        raise
+
+
+def confirm_raw_similarity_proposal(
+    connection: sqlite3.Connection,
+    group_id: str,
+    *,
+    raw_asset_id: str | None = None,
+    commit: bool = True,
+) -> dict[str, object]:
+    group = get_similarity_group(connection, group_id)
+    if group is None:
+        raise ValueError(f"unknown similarity group: {group_id}")
+    if str(group["kind"]) != "raw_proposal":
+        raise ValueError("only raw_proposal groups can confirm a RAW source")
+    image = next(
+        (member for member in group["members"] if member["relation"] == "source"),
+        None,
+    )
+    raw_candidates = [
+        member for member in group["members"] if member["relation"] == "raw_candidate"
+    ]
+    if image is None or not raw_candidates:
+        raise ValueError("RAW proposal is missing its image or RAW candidate")
+    selected_raw = raw_asset_id or str(max(raw_candidates, key=lambda item: item["score"])["asset_id"])
+    if selected_raw not in {str(member["asset_id"]) for member in raw_candidates}:
+        raise ValueError("selected RAW is not a member of the proposal")
+    try:
+        confirm_match(
+            connection,
+            Path(str(image["canonical_path"])),
+            selected_raw,
+            commit=False,
+        )
+        set_similarity_group_status(connection, group_id, "reviewed", commit=False)
+        if commit:
+            connection.commit()
+        return {
+            "group_id": group_id,
+            "status": "reviewed",
+            "image_asset_id": str(image["asset_id"]),
+            "raw_asset_id": selected_raw,
+        }
+    except Exception:
+        if commit:
+            connection.rollback()
+        raise

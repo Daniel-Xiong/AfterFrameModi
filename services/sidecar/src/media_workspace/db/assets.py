@@ -796,7 +796,13 @@ def list_repaint_history(connection: sqlite3.Connection, asset_path: str) -> lis
     return results
 
 
-def confirm_match(connection: sqlite3.Connection, image_path: Path, raw_asset_id: str) -> None:
+def confirm_match(
+    connection: sqlite3.Connection,
+    image_path: Path,
+    raw_asset_id: str,
+    *,
+    commit: bool = True,
+) -> None:
     registry = get_registry(connection, image_path)
     if registry is None:
         raise ValueError(f"no registry entry for {image_path}")
@@ -817,7 +823,8 @@ def confirm_match(connection: sqlite3.Connection, image_path: Path, raw_asset_id
         confidence=max(float(registry["score"]), 0.7),
         confirmed_by="user",
     )
-    connection.commit()
+    if commit:
+        connection.commit()
 
 
 def list_pending(connection: sqlite3.Connection) -> list[sqlite3.Row]:

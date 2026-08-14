@@ -16,6 +16,8 @@ from .db import (
     attach_asset_to_resource_set,
     backfill_asset_root_memberships,
     cleanup_orphan_image_assets,
+    confirm_raw_similarity_proposal,
+    confirm_similarity_group,
     confirm_match,
     connect,
     verify_assets,
@@ -539,6 +541,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     dismiss_similarity_parser = subparsers.add_parser("dismiss-similarity-group", parents=[common])
     dismiss_similarity_parser.add_argument("--group-id", required=True)
+
+    confirm_similarity_parser = subparsers.add_parser("confirm-similarity-group", parents=[common])
+    confirm_similarity_parser.add_argument("--group-id", required=True)
+    confirm_similarity_parser.add_argument("--keeper-asset-id")
+
+    confirm_raw_similarity_parser = subparsers.add_parser("confirm-raw-similarity", parents=[common])
+    confirm_raw_similarity_parser.add_argument("--group-id", required=True)
+    confirm_raw_similarity_parser.add_argument("--raw-asset-id")
 
     run_people_index_parser = subparsers.add_parser("run-people-index-job", parents=[common])
     run_people_index_parser.add_argument("--job-id", required=True)
@@ -1343,6 +1353,26 @@ def _cmd_dismiss_similarity_group(args, connection, catalog, parser):
     return 0
 
 
+def _cmd_confirm_similarity_group(args, connection, catalog, parser):
+    payload = confirm_similarity_group(
+        connection,
+        args.group_id,
+        keeper_asset_id=args.keeper_asset_id,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_confirm_raw_similarity(args, connection, catalog, parser):
+    payload = confirm_raw_similarity_proposal(
+        connection,
+        args.group_id,
+        raw_asset_id=args.raw_asset_id,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def _cmd_run_people_index_job(args, connection, catalog, parser):
     payload = run_people_index_job(
         connection,
@@ -2117,6 +2147,8 @@ COMMAND_HANDLERS = {
     "run-visual-match-job": _cmd_run_visual_match_job,
     "list-similarity-groups": _cmd_list_similarity_groups,
     "dismiss-similarity-group": _cmd_dismiss_similarity_group,
+    "confirm-similarity-group": _cmd_confirm_similarity_group,
+    "confirm-raw-similarity": _cmd_confirm_raw_similarity,
     "run-people-index-job": _cmd_run_people_index_job,
     "evaluate-ground-truth": _cmd_evaluate_ground_truth,
     "evaluate-visual-truth": _cmd_evaluate_visual_truth,
