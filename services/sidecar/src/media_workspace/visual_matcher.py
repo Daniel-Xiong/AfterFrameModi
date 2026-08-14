@@ -294,7 +294,10 @@ def classify_visual_candidate(
     probe_pixels = int(probe.get("meta_width") or 0) * int(probe.get("meta_height") or 0)
     should_try_crop = (
         bool(candidate.get("region_matches"))
-        and candidate_pixels >= probe_pixels
+        and (
+            (aspect_delta is not None and aspect_delta > thresholds.aspect_tolerance)
+            or candidate_pixels > probe_pixels * 1.1
+        )
         and probe_preview is not None
         and candidate_preview is not None
     )
