@@ -1391,7 +1391,7 @@ similarityIpc.register({
   ipcMain,
   commands: sidecarCommands,
   startVisualMatchTask,
-  getCatalogState,
+  getCatalogState: () => ({ currentCatalogPath, catalogHasDb }),
   formatJobStatus,
   latestJobStatus,
 });
