@@ -46,6 +46,7 @@
   },
   "sidebar": {
     "people": "人物",
+    "duplicates": "重复与相似",
     "stickers": "贴纸",
     "folders": "文件夹",
     "newFolder": "新建文件夹",
@@ -60,6 +61,38 @@
     "noAssets": "尚未索引任何素材",
     "assetsCount_other": "{{count}} 个素材",
     "updated": "更新于 {{time}}"
+  },
+  "duplicates": {
+    "title": "重复与相似照片",
+    "subtitle": "审阅压缩副本、裁剪图、连拍、近似图和 RAW 源。",
+    "chooseRoot": "选择源文件夹",
+    "againstCatalog": "与图库匹配",
+    "insideRoot": "查找文件夹内重复项",
+    "scan": "扫描",
+    "scanning": "扫描中 {{percent}}%",
+    "refresh": "刷新",
+    "failed": "无法载入相似照片组。",
+    "emptyTitle": "暂无清理建议",
+    "emptyHint": "选择图库中的源文件夹开始扫描。除非明确执行关联、移动或删除，文件会保留在原位置。",
+    "members_other": "{{count}} 个文件",
+    "reclaim": "可释放 {{size}}",
+    "dismiss": "忽略建议",
+    "attach": "关联为同一照片",
+    "confirmRaw": "确认 RAW 源",
+    "removeCatalog": "从图库移除",
+    "trash": "移到废纸篓",
+    "move": "移动到存储位置",
+    "moveComing": "请在移动对话框中选择目标位置",
+    "keeper": "保留：{{name}}",
+    "kind": {
+      "exact": "完全相同",
+      "compressed_family": "压缩副本",
+      "crop_family": "同一照片的裁剪",
+      "burst": "连拍序列",
+      "near_duplicate": "视觉近似",
+      "raw_proposal": "可能的 RAW 源",
+      "mixed": "相关照片"
+    }
   },
   "people": {
     "title": "人物",
@@ -163,7 +196,8 @@
       "enrichment": "元数据补全",
       "annotation": "AI 标注",
       "ai_repaint": "AI 重绘",
-      "people_index": "人物识别"
+      "people_index": "人物识别",
+      "visual_match": "重复与相似扫描"
     }
   },
   "lightbox": {

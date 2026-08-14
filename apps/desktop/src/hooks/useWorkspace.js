@@ -447,7 +447,10 @@ export default function useWorkspace({ pushToast } = {}) {
   async function deleteImageAssetsFromDisk(assetIds, paths) {
     const targetIds = [...new Set((assetIds || []).filter(Boolean))];
     if (!targetIds.length) return null;
-    const result = await api.deleteImageAssetsFromDisk(targetIds, paths || []);
+    const pathById = new Map(targetIds.map((assetId, index) => [assetId, paths?.[index]]));
+    const result = await api.deleteImageAssetsFromDisk(
+      targetIds.map((assetId) => ({ assetId, path: pathById.get(assetId) })),
+    );
     bumpCatalogRevision();
     const deletedSet = new Set(targetIds);
     setItems((current) => current.filter((item) => !deletedSet.has(item.asset_id)));
@@ -830,6 +833,7 @@ export default function useWorkspace({ pushToast } = {}) {
     setInspectorWidth,
     info,
     summary,
+    roots,
     items,
     filteredItems,
     detail,

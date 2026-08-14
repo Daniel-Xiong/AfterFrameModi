@@ -27,6 +27,8 @@ import { StickerToolbar, StickerGallery, StickerInspector, useStickerView } from
 import PeopleView from "./components/PeopleView";
 import PeopleInspector from "./components/PeopleInspector";
 import usePeopleGroups from "./hooks/usePeopleGroups";
+import useSimilarityGroups from "./hooks/useSimilarityGroups";
+import DuplicatesView from "./components/DuplicatesView";
 import DesignSystemPanel from "./components/DesignSystemPanel";
 import ToastStack, { useToasts } from "./components/Toast";
 import { ConfirmHost, confirm } from "./components/confirm";
@@ -79,7 +81,7 @@ export default function App() {
   const [layoutItems, setLayoutItems] = useState([]);
   const [compareState, setCompareState] = useState(null);
   const [collageItems, setCollageItems] = useState(null);
-  const [viewMode, setViewMode] = useState("assets"); // "assets" | "stickers" | "people"
+  const [viewMode, setViewMode] = useState("assets"); // "assets" | "stickers" | "people" | "duplicates"
   const [peopleGroup, setPeopleGroup] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(() => localStorage.getItem(MAP_EXPANDED_KEY) === "true");
@@ -195,6 +197,11 @@ export default function App() {
   const peopleGroups = usePeopleGroups({
     pushToast,
     enabled: viewMode === "people",
+    catalogKey: workspace.info?.catalogPath || null,
+  });
+  const similarityGroups = useSimilarityGroups({
+    pushToast,
+    enabled: viewMode === "duplicates",
     catalogKey: workspace.info?.catalogPath || null,
   });
 
@@ -366,7 +373,7 @@ export default function App() {
 
   const deleteAssets = async (ids) => {
     const list = [...new Set((ids || []).filter(Boolean))];
-    if (!list.length) return;
+    if (!list.length) return false;
     const ok = await confirm({
       title: t("deleteTitle"),
       message: t("deleteMsg", { count: list.length }),
@@ -375,13 +382,14 @@ export default function App() {
       cancelLabel: t("cancel"),
       danger: true,
     });
-    if (!ok) return;
+    if (!ok) return false;
     await workspaceRef.current.deleteImageAssets(list);
+    return true;
   };
 
   const deleteFromDisk = async (ids) => {
     const list = [...new Set((ids || []).filter(Boolean))];
-    if (!list.length) return;
+    if (!list.length) return false;
     const ok = await confirm({
       title: t("diskDeleteTitle"),
       message: t("diskDeleteMsg", { count: list.length }),
@@ -390,7 +398,7 @@ export default function App() {
       cancelLabel: t("cancel"),
       danger: true,
     });
-    if (!ok) return;
+    if (!ok) return false;
     const paths = list.map((id) => itemById.get(id)?.image_path).filter(Boolean);
     const result = await workspaceRef.current.deleteImageAssetsFromDisk(list, paths);
     if (result?.failed?.length) {
@@ -400,6 +408,7 @@ export default function App() {
         ttl: 5000,
       });
     }
+    return true;
   };
 
   const copyAssetField = async (ids, field) => {
@@ -963,6 +972,7 @@ export default function App() {
           onAddToCollection={workspace.addToCollection}
           stickerMode={viewMode === "stickers"}
           peopleMode={viewMode === "people"}
+          duplicatesMode={viewMode === "duplicates"}
           onOpenStickerBrowser={() => {
             setViewMode("stickers");
             setPeopleGroup(null);
@@ -971,6 +981,11 @@ export default function App() {
           }}
           onOpenPeople={() => {
             setViewMode("people");
+            setPeopleGroup(null);
+            workspace.clearCollection?.({ reload: false });
+          }}
+          onOpenDuplicates={() => {
+            setViewMode("duplicates");
             setPeopleGroup(null);
             workspace.clearCollection?.({ reload: false });
           }}
@@ -1021,6 +1036,24 @@ export default function App() {
               people={peopleGroups}
               onOpenGroup={openPersonGroup}
               onOpenSettings={() => setSettingsOpen(true)}
+            />
+          ) : viewMode === "duplicates" ? (
+            <DuplicatesView
+              similarity={similarityGroups}
+              roots={workspace.roots}
+              onDeleteCatalog={(members) => {
+                const ids = members.map((member) => member.asset_id);
+                void deleteAssets(ids).then((changed) => {
+                  if (changed) void similarityGroups.load();
+                });
+              }}
+              onTrash={(members) => {
+                const ids = members.map((member) => member.asset_id);
+                void deleteFromDisk(ids).then((changed) => {
+                  if (changed) void similarityGroups.load();
+                });
+              }}
+              onMove={() => pushToast?.({ title: tNav("duplicates.moveComing"), ttl: 3000 })}
             />
           ) : (
             <>

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
-  Activity, X, Ban, FolderInput, Images, Sparkles, Wand2, FileSearch, ScanFace, Pause, Play,
+  Activity, X, Ban, FolderInput, Images, Sparkles, Wand2, FileSearch, ScanFace, ScanSearch, Pause, Play,
   CheckCircle2, XCircle, CircleSlash,
 } from "lucide-react";
 
@@ -18,6 +18,7 @@ export const JOB_META = {
   annotation: { label: "AI Annotation", icon: Sparkles },
   ai_repaint: { label: "AI Repaint", icon: Wand2 },
   people_index: { label: "People Recognition", icon: ScanFace },
+  visual_match: { label: "Duplicate & Similar Scan", icon: ScanSearch },
 };
 
 export function jobLine(job, t) {
@@ -115,7 +116,7 @@ export default function ActivityCenter({ jobs, lastFinishedJob, onCancel, onPaus
                 const meta = JOB_META[job.jobType] || { label: job.jobType, icon: Activity };
                 const Icon = meta.icon;
                 const cancelling = !!job.cancel_requested;
-                const pausable = job.jobType === "people_index" && !cancelling;
+                const pausable = (job.jobType === "people_index" || job.jobType === "visual_match") && !cancelling;
                 const paused = job.status === "paused";
                 return (
                   <div key={job.jobId} className="px-2.5 py-2">

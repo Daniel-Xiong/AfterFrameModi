@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Images, Clock, Star, Link, FolderPlus, Folder, Trash2, Pencil, Cannabis, Settings as SettingsIcon, Sparkles, UsersRound } from "lucide-react";
+import { Images, Clock, Star, Link, FolderPlus, Folder, Trash2, Pencil, Cannabis, Settings as SettingsIcon, Sparkles, UsersRound, ScanSearch } from "lucide-react";
 import { baseName, formatTimestamp, navItems } from "../utils/format";
 
 const ICON_MAP = { Archive: Images, Clock, Star, Link };
@@ -54,9 +54,11 @@ export default function Sidebar({
   onAddToCollection,
   onOpenStickerBrowser,
   onOpenPeople,
+  onOpenDuplicates,
   onOpenSettings,
   stickerMode = false,
   peopleMode = false,
+  duplicatesMode = false,
 }) {
   const { t } = useTranslation("nav");
   const browse = navItems(summary);
@@ -113,7 +115,7 @@ export default function Sidebar({
         <div className="space-y-1">
           {browse.map((item) => {
             const Icon = ICON_MAP[item.icon];
-            const active = !activeCollectionId && !stickerMode && !peopleMode && item.key === status;
+            const active = !activeCollectionId && !stickerMode && !peopleMode && !duplicatesMode && item.key === status;
             return (
               <button
                 key={item.key}
@@ -165,6 +167,21 @@ export default function Sidebar({
             <span className="flex items-center gap-2.5">
               <UsersRound className={`h-4 w-4 stroke-[1.6] ${peopleMode ? "text-accent" : ""}`} />
               <span className="text-[13px]">{t("sidebar.people")}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.currentTarget.blur(); onOpenDuplicates?.(); }}
+            className={[
+              "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left outline-none transition-colors focus:outline-none focus-visible:outline-none",
+              duplicatesMode
+                ? "bg-selected text-text"
+                : "text-muted hover:bg-hover/70 hover:text-text",
+            ].join(" ")}
+          >
+            <span className="flex items-center gap-2.5">
+              <ScanSearch className={`h-4 w-4 stroke-[1.6] ${duplicatesMode ? "text-accent" : ""}`} />
+              <span className="text-[13px]">{t("sidebar.duplicates")}</span>
             </span>
           </button>
         </div>
