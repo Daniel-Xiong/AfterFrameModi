@@ -66,6 +66,7 @@ def _mark_cancelled(connection, job_id: str, payload: dict, result: dict | None 
     return final
 from .metadata import extract_image_candidate
 from .models import MatchDecision
+from .people_inference import LocalWorkerSession, analyze_asset_remote
 from .preview_service import PreviewService
 from .reverse_lookup import resolve_image
 from .reverse_lookup import resolve_image_batch
@@ -119,17 +120,20 @@ def run_people_index_job(
     *,
     model_id: str,
     model_version: str,
-    model_path: Path,
+    model_path: Path | None,
     manifest_hash: str,
     worker_path: Path | None = None,
     asset_ids: list[str] | None = None,
     limit: int | None = None,
     cluster_every: int = 300,
+    inference_backend: str = "local_worker",
+    base_url: str | None = None,
+    api_key: str | None = None,
 ) -> dict[str, object]:
-    """Run one resumable batch through the precompiled native people worker.
+    """Run one resumable batch through a local worker or remote HTTP backend.
 
-    The sidecar owns the child process and all database writes. A worker result
-    is committed at an asset boundary, then the job cursor advances, so a crash
+    The sidecar owns inference and all database writes. A worker result is
+    committed at an asset boundary, then the job cursor advances, so a crash
     never leaves a partially-written face set or an ambiguous resume point.
     """
     job = get_job(connection, job_id)
@@ -137,11 +141,22 @@ def run_people_index_job(
         raise ValueError(f"unknown people job: {job_id}")
     if job["job_type"] != "people_index":
         raise ValueError(f"job {job_id} is not a people_index job")
-    resolved_worker = worker_path or Path(os.environ.get("PEOPLE_WORKER_PATH", ""))
-    if not resolved_worker or not resolved_worker.is_file():
-        raise FileNotFoundError("People Worker is not available; PEOPLE_WORKER_PATH must point to the packaged binary")
-    if not model_path.exists():
-        raise FileNotFoundError(f"People model is missing: {model_path}")
+    backend = str(inference_backend or "local_worker")
+    if backend not in {"local_worker", "remote_http"}:
+        raise ValueError(f"unsupported people inference backend: {backend}")
+    resolved_worker: Path | None = None
+    resolved_model_path: Path | None = None
+    remote_base_url = str(base_url or "").strip() or None
+    if backend == "local_worker":
+        resolved_worker = worker_path or Path(os.environ.get("PEOPLE_WORKER_PATH", ""))
+        if not resolved_worker or not resolved_worker.is_file():
+            raise FileNotFoundError("People Worker is not available; PEOPLE_WORKER_PATH must point to the packaged binary")
+        if model_path is None or not model_path.exists():
+            raise FileNotFoundError(f"People model is missing: {model_path}")
+        resolved_model_path = model_path
+    else:
+        if not remote_base_url:
+            raise ValueError("remote people inference requires --base-url")
 
     prior_payload = dict(job.get("payload") or {})
     prior_result = dict(job.get("result") or {})
@@ -175,7 +190,9 @@ def run_people_index_job(
         **prior_payload,
         "model_id": model_id,
         "model_version": model_version,
-        "model_path": str(model_path.resolve()),
+        "model_path": str(resolved_model_path.resolve()) if resolved_model_path is not None else None,
+        "inference_backend": backend,
+        "base_url": remote_base_url,
         "resolved_asset_ids": resolved_asset_ids,
         "phase": "people_index",
         "phase_label": "Analyze People",
@@ -244,20 +261,12 @@ def run_people_index_job(
         )
         return final
 
-    worker: subprocess.Popen[str] | None = None
+    worker_session: LocalWorkerSession | None = None
     active_cursor = {"offset": offset, "total": len(candidates)}
     analyzed_since_cluster = 0
     try:
-        worker = subprocess.Popen(
-            [str(resolved_worker), "--model", str(model_path), "--serve"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-        )
-        assert worker.stdin is not None
-        assert worker.stdout is not None
+        if backend == "local_worker":
+            worker_session = LocalWorkerSession(resolved_worker, resolved_model_path)
         for position in range(offset, len(candidates)):
             _check_cancel(connection, job_id)
             _check_pause(connection, job_id)
@@ -298,15 +307,19 @@ def run_people_index_job(
                 "asset_path": str(candidate["canonical_path"]),
                 **({"known_input_hash": known_hash} if known_hash else {}),
             }
-            worker.stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
-            worker.stdin.flush()
-            raw_response = worker.stdout.readline()
-            if not raw_response:
-                detail = worker.stderr.read().strip() if worker.stderr else ""
-                raise RuntimeError(detail or "People Worker stopped before returning a response")
-            response = json.loads(raw_response)
-            if str(response.get("id", "")) != str(candidate["asset_id"]):
-                raise RuntimeError("People Worker returned a response for an unexpected asset")
+            if backend == "remote_http":
+                response = analyze_asset_remote(
+                    base_url=remote_base_url,
+                    asset_id=str(candidate["asset_id"]),
+                    asset_path=str(candidate["canonical_path"]),
+                    known_input_hash=known_hash,
+                    api_key=api_key,
+                )
+            else:
+                assert worker_session is not None
+                response = worker_session.analyze(request)
+                if str(response.get("id", "")) != str(candidate["asset_id"]):
+                    raise RuntimeError("People Worker returned a response for an unexpected asset")
             if response.get("ok"):
                 if response.get("skipped"):
                     stats["skipped"] = int(stats["skipped"]) + 1
@@ -455,22 +468,8 @@ def run_people_index_job(
         )
         raise
     finally:
-        if worker is not None:
-            if worker.stdin is not None and not worker.stdin.closed:
-                worker.stdin.close()
-            if worker.poll() is None:
-                try:
-                    worker.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    worker.terminate()
-                    try:
-                        worker.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        worker.kill()
-                        worker.wait(timeout=5)
-            for stream in (worker.stdout, worker.stderr):
-                if stream is not None and not stream.closed:
-                    stream.close()
+        if worker_session is not None:
+            worker_session.close()
 
 
 _HD_PHASE = {"key": "generate_previews_hd", "label": "Generate HD Previews", "progress": 1.0}

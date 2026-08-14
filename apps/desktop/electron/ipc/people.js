@@ -32,6 +32,49 @@ function isModelDirectory(modelPath) {
   return MODEL_EXTENSIONS.has(path.extname(modelPath).toLowerCase());
 }
 
+function normalizeBaseUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/\/+$/, "");
+}
+
+function remoteManifestHash(baseUrl) {
+  return crypto.createHash("sha256").update(normalizeBaseUrl(baseUrl)).digest("hex");
+}
+
+function remoteModelRecord(remote) {
+  const baseUrl = normalizeBaseUrl(remote?.baseUrl);
+  if (!baseUrl) return null;
+  const modelId = String(remote?.modelId || "remote-arcface").slice(0, 80);
+  const version = String(remote?.modelVersion || "1").slice(0, 40);
+  const manifestHash = remoteManifestHash(baseUrl);
+  const key = `${modelId}@${version}@remote`;
+  return {
+    key,
+    record: {
+      id: modelId,
+      version,
+      name: String(remote?.name || "Remote FastAPI").slice(0, 120),
+      kind: "arcface",
+      source: "remote",
+      license: "Remote inference service",
+      licenseUrl: baseUrl,
+      manifestHash,
+      sizeBytes: 0,
+      installedAt: remote?.configuredAt || new Date().toISOString(),
+      embeddingDimensions: Number(remote?.embeddingDimensions || 512),
+      modelPath: null,
+      baseUrl,
+    },
+  };
+}
+
+async function testRemotePeopleService({ commands, baseUrl, apiKey }) {
+  const args = ["test-people-remote-connection", "--base-url", normalizeBaseUrl(baseUrl)];
+  if (apiKey) args.push("--api-key", String(apiKey));
+  return commands.callJson(args);
+}
+
 function safeId(value, fallback) {
   const normalized = String(value || "").trim().replace(/[^a-zA-Z0-9._-]+/g, "-");
   return normalized.slice(0, 80) || fallback;
@@ -242,12 +285,13 @@ function register({
   }
 
   function publicRecord(key, record) {
-    const exists = !!record?.modelPath && fs.existsSync(record.modelPath);
+    const isRemote = record?.source === "remote";
+    const exists = isRemote ? !!normalizeBaseUrl(record?.baseUrl) : !!record?.modelPath && fs.existsSync(record.modelPath);
     return {
       key,
       id: record?.id || null,
       version: record?.version || null,
-      name: record?.name || "Local Core ML model",
+      name: record?.name || (isRemote ? "Remote FastAPI" : "Local Core ML model"),
       kind: record?.kind || "arcface",
       source: record?.source || "custom",
       license: record?.license || null,
@@ -256,6 +300,7 @@ function register({
       sizeBytes: Number(record?.sizeBytes || 0),
       installedAt: record?.installedAt || null,
       embeddingDimensions: Number(record?.embeddingDimensions || 0),
+      baseUrl: record?.baseUrl || null,
       available: exists,
     };
   }
@@ -264,13 +309,28 @@ function register({
     const settings = getSettings();
     const all = records();
     const models = Object.entries(all).map(([key, record]) => publicRecord(key, record));
+    const remote = settings.remote && typeof settings.remote === "object" ? settings.remote : {};
+    const remoteEntry = remoteModelRecord(remote);
+    if (remoteEntry && !models.some((model) => model.key === remoteEntry.key)) {
+      models.unshift(publicRecord(remoteEntry.key, remoteEntry.record));
+    }
+    const inferenceBackend = settings.inferenceBackend === "remote_http" ? "remote_http" : "local_worker";
     const activeKey = models.find((model) => model.key === settings.activeModelKey && model.available)
       ? settings.activeModelKey
-      : null;
+      : (inferenceBackend === "remote_http" && remoteEntry ? remoteEntry.key : null);
     return {
       activeModelKey: activeKey,
       activeModel: activeKey ? models.find((model) => model.key === activeKey) : null,
       models,
+      inferenceBackend,
+      remote: {
+        baseUrl: normalizeBaseUrl(remote.baseUrl),
+        apiKeySet: !!String(remote.apiKey || "").trim(),
+        modelId: String(remote.modelId || "remote-arcface"),
+        modelVersion: String(remote.modelVersion || "1"),
+        name: String(remote.name || "Remote FastAPI"),
+        embeddingDimensions: Number(remote.embeddingDimensions || 512),
+      },
       automaticDownloads: !!settings.automaticDownloads,
       download: {
         available: true,
@@ -296,10 +356,17 @@ function register({
 
   function activeInternalRecord() {
     const settings = getSettings();
+    const inferenceBackend = settings.inferenceBackend === "remote_http" ? "remote_http" : "local_worker";
+    if (inferenceBackend === "remote_http") {
+      const remote = settings.remote && typeof settings.remote === "object" ? settings.remote : {};
+      const entry = remoteModelRecord(remote);
+      if (!entry) return null;
+      return { key: entry.key, record: entry.record, inferenceBackend, remote };
+    }
     const key = settings.activeModelKey;
     const record = key ? records()[key] : null;
     if (!record?.modelPath || !fs.existsSync(record.modelPath)) return null;
-    return { key, record };
+    return { key, record, inferenceBackend: "local_worker", remote: null };
   }
 
   async function installModel(sourceModelPath, manifest, source = "custom") {
@@ -347,22 +414,33 @@ function register({
 
   function commandForPeopleJob(job) {
     const payload = job?.payload || {};
-    const modelPath = String(payload.model_path || "");
+    const backend = payload.inference_backend === "remote_http" ? "remote_http" : "local_worker";
     const modelId = String(payload.model_id || "");
     const modelVersion = String(payload.model_version || "");
     const manifestHash = String(payload.manifest_hash || "");
-    if (!modelPath || !modelId || !modelVersion || !manifestHash) {
+    if (!modelId || !modelVersion || !manifestHash) {
       throw new Error("This people task is missing its model configuration and cannot be resumed.");
     }
-    if (!fs.existsSync(modelPath)) throw new Error("The model used by this people task is no longer installed.");
     const args = [
       "run-people-index-job",
       "--job-id", String(job.job_id),
       "--model-id", modelId,
       "--model-version", modelVersion,
-      "--model-path", modelPath,
       "--manifest-hash", manifestHash,
+      "--inference-backend", backend,
     ];
+    if (backend === "remote_http") {
+      const baseUrl = normalizeBaseUrl(payload.base_url);
+      if (!baseUrl) throw new Error("This remote people task is missing its service URL.");
+      args.push("--base-url", baseUrl);
+      if (payload.api_key) args.push("--api-key", String(payload.api_key));
+    } else {
+      const modelPath = String(payload.model_path || "");
+      if (!modelPath || !fs.existsSync(modelPath)) {
+        throw new Error("The model used by this people task is no longer installed.");
+      }
+      args.push("--model-path", modelPath);
+    }
     if (!Array.isArray(payload.resolved_asset_ids) && Array.isArray(payload.requested_asset_ids)) {
       for (const assetId of payload.requested_asset_ids) args.push("--asset-id", String(assetId));
     }
@@ -381,6 +459,68 @@ function register({
       peopleRecognition: { ...(settings.peopleRecognition || {}), automaticDownloads: !!enabled },
     }));
     return state();
+  });
+
+  ipcMain.handle("workspace:set-people-inference-backend", async (_event, backend) => {
+    const normalized = backend === "remote_http" ? "remote_http" : "local_worker";
+    await updateAppSettings((settings) => {
+      const peopleRecognition = { ...(settings.peopleRecognition || {}), inferenceBackend: normalized };
+      if (normalized === "remote_http") {
+        const remote = peopleRecognition.remote && typeof peopleRecognition.remote === "object"
+          ? peopleRecognition.remote
+          : {};
+        const entry = remoteModelRecord(remote);
+        if (entry) peopleRecognition.activeModelKey = entry.key;
+      }
+      return { ...settings, peopleRecognition };
+    });
+    return state();
+  });
+
+  ipcMain.handle("workspace:set-people-remote-config", async (_event, config) => {
+    const incoming = config && typeof config === "object" ? config : {};
+    await updateAppSettings((settings) => {
+      const peopleRecognition = { ...(settings.peopleRecognition || {}) };
+      const current = peopleRecognition.remote && typeof peopleRecognition.remote === "object"
+        ? peopleRecognition.remote
+        : {};
+      const nextRemote = {
+        ...current,
+        baseUrl: normalizeBaseUrl(incoming.baseUrl ?? current.baseUrl),
+        modelId: String(incoming.modelId || current.modelId || "remote-arcface").slice(0, 80),
+        modelVersion: String(incoming.modelVersion || current.modelVersion || "1").slice(0, 40),
+        name: String(incoming.name || current.name || "Remote FastAPI").slice(0, 120),
+        embeddingDimensions: Number(incoming.embeddingDimensions || current.embeddingDimensions || 512),
+        configuredAt: new Date().toISOString(),
+      };
+      if (Object.prototype.hasOwnProperty.call(incoming, "apiKey")) {
+        nextRemote.apiKey = String(incoming.apiKey || "");
+      }
+      return {
+        ...settings,
+        peopleRecognition: {
+          ...peopleRecognition,
+          remote: nextRemote,
+          inferenceBackend: peopleRecognition.inferenceBackend === "remote_http" ? "remote_http" : "local_worker",
+          activeModelKey: peopleRecognition.inferenceBackend === "remote_http" && remoteModelRecord(nextRemote)
+            ? remoteModelRecord(nextRemote).key
+            : peopleRecognition.activeModelKey,
+        },
+      };
+    });
+    return state();
+  });
+
+  ipcMain.handle("workspace:test-people-remote-connection", async (_event, options) => {
+    const opts = options && typeof options === "object" ? options : {};
+    const settings = getSettings();
+    const remote = settings.remote && typeof settings.remote === "object" ? settings.remote : {};
+    const baseUrl = normalizeBaseUrl(opts.baseUrl || remote.baseUrl);
+    if (!baseUrl) throw new Error("Enter the remote service URL first.");
+    const apiKey = Object.prototype.hasOwnProperty.call(opts, "apiKey")
+      ? String(opts.apiKey || "")
+      : String(remote.apiKey || "");
+    return testRemotePeopleService({ commands, baseUrl, apiKey });
   });
 
   ipcMain.handle("workspace:pick-people-model", async () => {
@@ -459,24 +599,42 @@ function register({
   async function startPeopleIndex(options) {
     const { currentCatalogPath, catalogHasDb } = getCatalogState();
     if (!currentCatalogPath || !catalogHasDb()) throw new Error("Open a catalog before recognizing people.");
+    const settings = getSettings();
+    const inferenceBackend = settings.inferenceBackend === "remote_http" ? "remote_http" : "local_worker";
     const active = activeInternalRecord();
-    if (!active) throw new Error("Install and select a compatible local face model first.");
+    if (!active) {
+      throw new Error(
+        inferenceBackend === "remote_http"
+          ? "Configure a remote face service URL first."
+          : "Install and select a compatible local face model first.",
+      );
+    }
     const current = await latestJobStatus("people_index");
     if (current.active) return current;
     const opts = options || {};
     const assetIds = Array.isArray(opts.assetIds)
       ? [...new Set(opts.assetIds.map(String).filter((value) => value.length > 0))].slice(0, 50000)
       : [];
-    const { record } = active;
-    const job = await createJob("people_index", {
+    const { record, inferenceBackend: activeBackend, remote } = active;
+    const payload = {
       scope: assetIds.length ? "selection" : "catalog",
       asset_count: assetIds.length || null,
       requested_asset_ids: assetIds,
       model_id: record.id,
       model_version: record.version,
-      model_path: record.modelPath,
       manifest_hash: record.manifestHash,
-    }, { priority: Number.isFinite(opts.priority) ? opts.priority : 5 });
+      inference_backend: activeBackend,
+    };
+    if (activeBackend === "remote_http") {
+      payload.base_url = normalizeBaseUrl(remote?.baseUrl || record.baseUrl);
+      payload.api_key = String(remote?.apiKey || "");
+      payload.model_path = null;
+    } else {
+      payload.model_path = record.modelPath;
+    }
+    const job = await createJob("people_index", payload, {
+      priority: Number.isFinite(opts.priority) ? opts.priority : 5,
+    });
     launchPeopleJob(job);
     return formatJobStatus(job);
   }

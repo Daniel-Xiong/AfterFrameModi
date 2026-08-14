@@ -80,6 +80,7 @@ from .db import (
 from .evaluation import evaluate_ground_truth
 from .ground_truth import export_ground_truth
 from .job_runner import run_ai_repaint_job, run_annotation_job, run_enrichment_job, run_import_job, run_people_index_job, run_preview_job, run_visual_match_job
+from .people_inference import test_remote_connection
 from .preview_service import PreviewService
 from .metadata import extract_image_candidate, iso_mtime
 from .models import MatchDecision
@@ -575,11 +576,18 @@ def build_parser() -> argparse.ArgumentParser:
     run_people_index_parser.add_argument("--job-id", required=True)
     run_people_index_parser.add_argument("--model-id", required=True)
     run_people_index_parser.add_argument("--model-version", required=True)
-    run_people_index_parser.add_argument("--model-path", type=Path, required=True)
+    run_people_index_parser.add_argument("--model-path", type=Path)
     run_people_index_parser.add_argument("--manifest-hash", required=True)
     run_people_index_parser.add_argument("--worker-path", type=Path)
+    run_people_index_parser.add_argument("--inference-backend", choices=["local_worker", "remote_http"], default="local_worker")
+    run_people_index_parser.add_argument("--base-url")
+    run_people_index_parser.add_argument("--api-key")
     run_people_index_parser.add_argument("--asset-id", action="append")
     run_people_index_parser.add_argument("--limit", type=int)
+
+    test_people_remote_parser = subparsers.add_parser("test-people-remote-connection", parents=[common])
+    test_people_remote_parser.add_argument("--base-url", required=True)
+    test_people_remote_parser.add_argument("--api-key")
 
     get_provider_token = subparsers.add_parser("get-provider-token", parents=[common])
     get_provider_token.add_argument("--provider", required=True)
@@ -1441,7 +1449,16 @@ def _cmd_run_people_index_job(args, connection, catalog, parser):
         worker_path=args.worker_path,
         asset_ids=args.asset_id,
         limit=args.limit,
+        inference_backend=args.inference_backend,
+        base_url=args.base_url,
+        api_key=args.api_key,
     )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_test_people_remote_connection(args, connection, catalog, parser):
+    payload = test_remote_connection(base_url=args.base_url, api_key=args.api_key)
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -2210,6 +2227,7 @@ COMMAND_HANDLERS = {
     "update-relocation-operation": _cmd_update_relocation,
     "list-relocation-operations": _cmd_list_relocations,
     "run-people-index-job": _cmd_run_people_index_job,
+    "test-people-remote-connection": _cmd_test_people_remote_connection,
     "evaluate-ground-truth": _cmd_evaluate_ground_truth,
     "evaluate-visual-truth": _cmd_evaluate_visual_truth,
     "export-ground-truth": _cmd_export_ground_truth,
