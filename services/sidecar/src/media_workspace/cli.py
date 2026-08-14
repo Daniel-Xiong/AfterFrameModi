@@ -77,6 +77,7 @@ from .metadata import extract_image_candidate, iso_mtime
 from .models import MatchDecision
 from .reverse_lookup import iter_image_files, resolve_image, resolve_image_batch
 from .scanner import enrich_raw_assets, scan_raw_directory
+from .visual_evaluation import evaluate_visual_truth
 from .watcher import ImageWatcher
 
 
@@ -215,6 +216,10 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate = subparsers.add_parser("evaluate-ground-truth", parents=[common])
     evaluate.add_argument("--truth-csv", type=Path, required=True)
     evaluate.add_argument("--refresh", action="store_true")
+
+    evaluate_visual = subparsers.add_parser("evaluate-visual-truth", parents=[common])
+    evaluate_visual.add_argument("--truth-csv", type=Path, required=True)
+    evaluate_visual.add_argument("--max-hamming", type=int, default=16)
 
     export_truth = subparsers.add_parser("export-ground-truth", parents=[common])
     export_truth.add_argument("--output-csv", type=Path, required=True)
@@ -1098,6 +1103,12 @@ def _cmd_analyze_metadata(args, connection, catalog, parser):
         image_dirs=[path.resolve() for path in args.image_dir],
     )
     print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_evaluate_visual_truth(args, connection, catalog, parser):
+    payload = evaluate_visual_truth(args.truth_csv.resolve(), max_hamming=args.max_hamming)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -2034,6 +2045,7 @@ COMMAND_HANDLERS = {
     "run-preview-job": _cmd_run_preview_job,
     "run-people-index-job": _cmd_run_people_index_job,
     "evaluate-ground-truth": _cmd_evaluate_ground_truth,
+    "evaluate-visual-truth": _cmd_evaluate_visual_truth,
     "export-ground-truth": _cmd_export_ground_truth,
     "resolve-image": _cmd_resolve_image,
     "resolve-export-batch": _cmd_resolve_image_batch,
