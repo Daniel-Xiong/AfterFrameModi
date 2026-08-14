@@ -46,6 +46,7 @@
   },
   "sidebar": {
     "people": "People",
+    "duplicates": "Duplicates",
     "stickers": "Stickers",
     "folders": "Folders",
     "newFolder": "New folder",
@@ -61,6 +62,40 @@
     "assetsCount_one": "{{count}} asset",
     "assetsCount_other": "{{count}} assets",
     "updated": "updated {{time}}"
+  },
+  "duplicates": {
+    "title": "Duplicates & Similar",
+    "subtitle": "Review compressed copies, crops, bursts, similar photos, and RAW sources.",
+    "chooseRoot": "Choose source folder",
+    "againstCatalog": "Match against catalog",
+    "insideRoot": "Find duplicates inside folder",
+    "scan": "Scan",
+    "scanning": "Scanning {{percent}}%",
+    "refresh": "Refresh",
+    "failed": "Couldn’t load similarity groups.",
+    "emptyTitle": "No cleanup proposals",
+    "emptyHint": "Choose a catalog source folder and scan. Files stay in place until you explicitly attach, move, or delete them.",
+    "members_one": "{{count}} file",
+    "members_other": "{{count}} files",
+    "reclaim": "{{size}} reclaimable",
+    "dismiss": "Dismiss proposal",
+    "attach": "Attach as one photo",
+    "confirmRaw": "Confirm RAW source",
+    "removeCatalog": "Remove from catalog",
+    "trash": "Move to Trash",
+    "move": "Move to storage",
+    "archive": "Archive out of catalog",
+    "moveComing": "Choose a destination in the move dialog",
+    "keeper": "Keep: {{name}}",
+    "kind": {
+      "exact": "Exact copies",
+      "compressed_family": "Compressed copies",
+      "crop_family": "Crops of one photo",
+      "burst": "Burst sequence",
+      "near_duplicate": "Visually similar",
+      "raw_proposal": "Possible RAW source",
+      "mixed": "Related photos"
+    }
   },
   "people": {
     "title": "People",
@@ -172,7 +207,8 @@
       "enrichment": "Enrichment",
       "annotation": "AI Annotation",
       "ai_repaint": "AI Repaint",
-      "people_index": "People Recognition"
+      "people_index": "People Recognition",
+      "visual_match": "Duplicate & Similar Scan"
     }
   },
   "lightbox": {

@@ -89,29 +89,49 @@ function register({ ipcMain, shell, dialog, BrowserWindow, commands, callSidecar
     return await callSidecarJsonAsync(command) || [];
   });
 
-  // Delete from disk: move the originals to the OS trash (recoverable), THEN
-  // drop them from the catalog. Trashing first means the file is already gone
-  // when the sidecar delete runs, so no tombstone is written (none is needed —
-  // a trashed file can't reappear in a watched dir). Paths come from the
-  // renderer (it has image_path per asset); we still trash defensively.
+  // Delete from disk: resolve authoritative paths from the catalog, trash each
+  // file, then remove ONLY the successfully trashed subset from the catalog.
+  // A partial OS failure must never make a still-existing file disappear from
+  // the catalog.
   ipcMain.handle("workspace:delete-image-assets-from-disk", async (_event, payload) => {
-    const ids = [...new Set((payload?.assetIds || []).filter(Boolean))];
+    const requested = Array.isArray(payload?.items)
+      ? payload.items
+      : (payload?.assetIds || []).map((assetId, index) => ({
+          assetId,
+          path: payload?.paths?.[index],
+        }));
+    const ids = [...new Set(requested.map((item) => item?.assetId).filter(Boolean))];
     if (!ids.length) return { deleted: [], trashed: 0, failed: [] };
-    const paths = [...new Set((payload?.paths || []).filter(Boolean))];
     const failed = [];
+    const trashedIds = [];
     let trashed = 0;
-    for (const p of paths) {
+    for (const assetId of ids) {
       try {
-        if (fs.existsSync(p)) {
-          await shell.trashItem(p);
-          trashed += 1;
+        const detail = await commands.assetDetail({ assetId });
+        const authoritativePath = detail?.image_path || detail?.canonical_path;
+        if (!authoritativePath) {
+          failed.push({ assetId, error: "catalog_path_missing" });
+          continue;
         }
+        const requestedPath = requested.find((item) => item?.assetId === assetId)?.path;
+        if (requestedPath && path.resolve(requestedPath) !== path.resolve(authoritativePath)) {
+          failed.push({ assetId, path: requestedPath, error: "catalog_path_mismatch" });
+          continue;
+        }
+        if (!fs.existsSync(authoritativePath)) {
+          failed.push({ assetId, path: authoritativePath, error: "file_missing" });
+          continue;
+        }
+        await shell.trashItem(authoritativePath);
+        trashed += 1;
+        trashedIds.push(assetId);
       } catch (err) {
-        failed.push({ path: p, error: err?.message || String(err) });
+        failed.push({ assetId, error: err?.message || String(err) });
       }
     }
+    if (!trashedIds.length) return { deleted: [], trashed, failed };
     const command = ["delete-image-assets"];
-    for (const assetId of ids) command.push("--asset-id", String(assetId));
+    for (const assetId of trashedIds) command.push("--asset-id", String(assetId));
     const deleted = await callSidecarJsonAsync(command) || [];
     return { deleted, trashed, failed };
   });

@@ -12,6 +12,7 @@ function register({
   startPreviewTask,
   commands,
   resumePeopleIndexJob,
+  resumeVisualMatchJob,
 }) {
   function emptyStatus() {
     const { currentCatalogPath, catalogHasDb } = getCatalogState();
@@ -80,6 +81,10 @@ function register({
     const job = await commands.getJob(jobId);
     if (job?.job_type === "people_index" && resumePeopleIndexJob) {
       const resumed = await resumePeopleIndexJob(jobId);
+      if (resumed != null) return resumed;
+    }
+    if (job?.job_type === "visual_match" && resumeVisualMatchJob) {
+      const resumed = await resumeVisualMatchJob(jobId);
       if (resumed != null) return resumed;
     }
     return await commands.resumeJob(jobId);

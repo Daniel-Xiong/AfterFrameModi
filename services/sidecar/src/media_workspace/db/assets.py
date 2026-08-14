@@ -141,6 +141,9 @@ def upsert_raw_asset(connection: sqlite3.Connection, metadata: RawMetadata, comm
             metadata.enrichment_status,
         ),
     )
+    from .roots import assign_asset_root_membership
+
+    assign_asset_root_membership(connection, metadata.asset_id, commit=False)
     if commit:
         connection.commit()
 
@@ -223,6 +226,9 @@ def upsert_video_asset(
         """,
         (_file_id(asset_id, path), asset_id, path),
     )
+    from .roots import assign_asset_root_membership
+
+    assign_asset_root_membership(connection, asset_id, commit=False)
     if commit:
         connection.commit()
     return asset_id
@@ -303,6 +309,9 @@ def upsert_image_asset(connection: sqlite3.Connection, export: ImageCandidate, c
         (_file_id(asset_id, str(export.path)), asset_id, str(export.path)),
     )
     upsert_asset_location_from_metadata(connection, asset_id, asset_metadata)
+    from .roots import assign_asset_root_membership
+
+    assign_asset_root_membership(connection, asset_id, commit=False)
     if commit:
         connection.commit()
     return asset_id
@@ -681,27 +690,37 @@ def upsert_preview_entry(
         connection.commit()
 
 
-def upsert_catalog_root(connection: sqlite3.Connection, root_type: str, path: Path, commit: bool = True) -> None:
+def upsert_catalog_root(
+    connection: sqlite3.Connection,
+    root_type: str,
+    path: Path,
+    commit: bool = True,
+    *,
+    user_declared: bool = False,
+) -> str:
     digest = sha1(f"{root_type}:{path.resolve()}".encode("utf-8")).hexdigest()[:20]
+    root_id = f"root_{digest}"
     connection.execute(
         """
-        INSERT INTO catalog_roots (root_id, root_type, path)
-        VALUES (?, ?, ?)
+        INSERT INTO catalog_roots (root_id, root_type, path, user_declared)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT(path) DO UPDATE SET
             root_type = excluded.root_type,
             is_active = 1,
+            user_declared = MAX(catalog_roots.user_declared, excluded.user_declared),
             updated_at = CURRENT_TIMESTAMP
         """,
-        (f"root_{digest}", root_type, str(path.resolve())),
+        (root_id, root_type, str(path.resolve()), int(user_declared)),
     )
     if commit:
         connection.commit()
+    return root_id
 
 
 def list_catalog_roots(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     return connection.execute(
         """
-        SELECT root_id, root_type, path, is_active, created_at, updated_at
+        SELECT root_id, root_type, path, is_active, user_declared, created_at, updated_at
         FROM catalog_roots
         WHERE is_active = 1
         ORDER BY root_type, path
@@ -777,7 +796,13 @@ def list_repaint_history(connection: sqlite3.Connection, asset_path: str) -> lis
     return results
 
 
-def confirm_match(connection: sqlite3.Connection, image_path: Path, raw_asset_id: str) -> None:
+def confirm_match(
+    connection: sqlite3.Connection,
+    image_path: Path,
+    raw_asset_id: str,
+    *,
+    commit: bool = True,
+) -> None:
     registry = get_registry(connection, image_path)
     if registry is None:
         raise ValueError(f"no registry entry for {image_path}")
@@ -798,7 +823,8 @@ def confirm_match(connection: sqlite3.Connection, image_path: Path, raw_asset_id
         confidence=max(float(registry["score"]), 0.7),
         confirmed_by="user",
     )
-    connection.commit()
+    if commit:
+        connection.commit()
 
 
 def list_pending(connection: sqlite3.Connection) -> list[sqlite3.Row]:

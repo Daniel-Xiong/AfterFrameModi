@@ -23,7 +23,7 @@ export default function JobDock({ jobs, queuedNote, onCancel, onPause, onResume,
         const Icon = meta.icon;
         const cancelling = !!job.cancel_requested;
         const isImport = job.jobType === "import";
-        const pausable = job.jobType === "people_index" && !cancelling;
+        const pausable = (job.jobType === "people_index" || job.jobType === "visual_match") && !cancelling;
         const paused = job.status === "paused";
         return (
           <div

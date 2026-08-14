@@ -62,6 +62,8 @@ const depthIpc = require("./ipc/depth");
 const collectionsIpc = require("./ipc/collections");
 const aiIpc = require("./ipc/ai");
 const jobsIpc = require("./ipc/jobs");
+const similarityIpc = require("./ipc/similarity");
+const relocationIpc = require("./ipc/relocation");
 const browseIpc = require("./ipc/browse");
 const assetsIpc = require("./ipc/assets");
 const saveFileIpc = require("./ipc/saveFile");
@@ -800,6 +802,46 @@ async function startPreviewTask(kind = "preview") {
   return formatJobStatus(job);
 }
 
+async function startVisualMatchTask(options = {}) {
+  const probeRootId = String(options.probeRootId || "");
+  if (!probeRootId) throw new Error("choose a source root to match");
+  const galleryScope = options.galleryScope === "same_root"
+    ? "same_root"
+    : "catalog_except_probe";
+  const current = await latestJobStatus("visual_match");
+  if (current.running) return current;
+  const job = await createJob("visual_match", {
+    probe_root_id: probeRootId,
+    gallery_scope: galleryScope,
+    include_raw_proposals: options.includeRawProposals !== false,
+  });
+  const command = [
+    "run-visual-match-job",
+    "--job-id", job.job_id,
+    "--probe-root-id", probeRootId,
+    "--gallery-scope", galleryScope,
+  ];
+  if (options.includeRawProposals === false) command.push("--skip-raw-proposals");
+  launchSidecarJob(command);
+  return formatJobStatus(job);
+}
+
+async function resumeVisualMatchJob(jobId) {
+  const job = await sidecarCommands.getJob(jobId);
+  if (!job || job.job_type !== "visual_match") return null;
+  await sidecarCommands.resumeJob(jobId);
+  const payload = job.payload || {};
+  const command = [
+    "run-visual-match-job",
+    "--job-id", String(jobId),
+    "--probe-root-id", String(payload.probe_root_id),
+    "--gallery-scope", String(payload.gallery_scope || "catalog_except_probe"),
+  ];
+  if (payload.include_raw_proposals === false) command.push("--skip-raw-proposals");
+  launchSidecarJob(command);
+  return formatJobStatus({ ...job, status: "queued", pause_requested: false });
+}
+
 function deriveAiRepaintOutputPath(sourcePath) {
   const source = path.resolve(sourcePath);
   const ext = ".png";
@@ -1344,6 +1386,24 @@ jobsIpc.register({
   startImportTask, startEnrichmentTask, startPreviewTask,
   commands: sidecarCommands,
   resumePeopleIndexJob: (jobId) => peopleApi?.resumePeopleIndexJob(jobId),
+  resumeVisualMatchJob,
+});
+similarityIpc.register({
+  ipcMain,
+  commands: sidecarCommands,
+  startVisualMatchTask,
+  getCatalogState: () => ({ currentCatalogPath, catalogHasDb }),
+  formatJobStatus,
+  latestJobStatus,
+});
+relocationIpc.register({
+  ipcMain,
+  dialog,
+  BrowserWindow,
+  shell,
+  commands: sidecarCommands,
+  watcherApi,
+  addAllowedMediaDir,
 });
 
 aiIpc.register({

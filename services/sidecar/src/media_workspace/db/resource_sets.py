@@ -294,6 +294,128 @@ def reassign_asset_to_resource_set(
     return target_set
 
 
+def merge_resource_sets(
+    connection: sqlite3.Connection,
+    *,
+    keeper_asset_id: str,
+    member_asset_ids: list[str],
+    version_kind: str,
+    commit: bool = True,
+) -> str:
+    all_ids = list(dict.fromkeys([keeper_asset_id, *member_asset_ids]))
+    rows = connection.execute(
+        f"SELECT asset_id FROM assets WHERE asset_id IN ({','.join('?' for _ in all_ids)})",
+        all_ids,
+    ).fetchall()
+    existing_ids = {str(row["asset_id"]) for row in rows}
+    missing = [asset_id for asset_id in all_ids if asset_id not in existing_ids]
+    if missing:
+        raise ValueError(f"unknown assets: {', '.join(missing)}")
+
+    keeper_set = get_resource_set_for_asset(connection, keeper_asset_id)
+    if keeper_set is None:
+        target_set_id = create_resource_set(connection, keeper_asset_id, commit=False)
+    else:
+        target_set_id = str(keeper_set["set_id"])
+
+    source_set_ids: set[str] = set()
+    for asset_id in member_asset_ids:
+        current = get_resource_set_for_asset(connection, asset_id)
+        if current is not None and str(current["set_id"]) != target_set_id:
+            source_set_ids.add(str(current["set_id"]))
+
+    target = get_resource_set(connection, target_set_id)
+    target_raw = str(target["raw_asset_id"]) if target and target["raw_asset_id"] else None
+    for source_set_id in source_set_ids:
+        source = get_resource_set(connection, source_set_id)
+        source_raw = str(source["raw_asset_id"]) if source and source["raw_asset_id"] else None
+        if target_raw and source_raw and target_raw != source_raw:
+            raise ValueError("cannot merge resource sets with different RAW sources")
+        target_raw = target_raw or source_raw
+
+    for source_set_id in source_set_ids:
+        source_members = connection.execute(
+            """
+            SELECT asset_id, role, version_kind, parent_asset_id, sort_order
+            FROM resource_set_items
+            WHERE set_id = ?
+            ORDER BY sort_order, created_at, asset_id
+            """,
+            (source_set_id,),
+        ).fetchall()
+        connection.execute("DELETE FROM resource_set_items WHERE set_id = ?", (source_set_id,))
+        for member in source_members:
+            asset_id = str(member["asset_id"])
+            parent_asset_id = member["parent_asset_id"]
+            member_kind = member["version_kind"]
+            if asset_id in member_asset_ids and asset_id != keeper_asset_id:
+                parent_asset_id = keeper_asset_id
+                member_kind = version_kind
+            add_asset_to_resource_set(
+                connection,
+                target_set_id,
+                asset_id,
+                role="version",
+                version_kind=str(member_kind or version_kind),
+                parent_asset_id=str(parent_asset_id) if parent_asset_id else None,
+                commit=False,
+            )
+        connection.execute("DELETE FROM resource_sets WHERE set_id = ?", (source_set_id,))
+
+    for asset_id in member_asset_ids:
+        if asset_id == keeper_asset_id:
+            continue
+        current = get_resource_set_for_asset(connection, asset_id)
+        if current is None:
+            add_asset_to_resource_set(
+                connection,
+                target_set_id,
+                asset_id,
+                role="version",
+                version_kind=version_kind,
+                parent_asset_id=keeper_asset_id,
+                commit=False,
+            )
+        elif str(current["set_id"]) == target_set_id:
+            connection.execute(
+                """
+                UPDATE resource_set_items
+                SET role = 'version', version_kind = ?, parent_asset_id = ?
+                WHERE set_id = ? AND asset_id = ?
+                """,
+                (version_kind, keeper_asset_id, target_set_id, asset_id),
+            )
+
+    connection.execute(
+        "UPDATE resource_set_items SET role = 'version' WHERE set_id = ?",
+        (target_set_id,),
+    )
+    connection.execute(
+        """
+        INSERT INTO resource_set_items (
+            set_id, asset_id, role, version_kind, parent_asset_id, sort_order
+        ) VALUES (?, ?, 'primary', 'main', NULL, 0)
+        ON CONFLICT(set_id, asset_id) DO UPDATE SET
+            role = 'primary',
+            version_kind = 'main',
+            parent_asset_id = NULL,
+            sort_order = 0
+        """,
+        (target_set_id, keeper_asset_id),
+    )
+    connection.execute(
+        """
+        UPDATE resource_sets
+        SET primary_asset_id = ?, raw_asset_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE set_id = ?
+        """,
+        (keeper_asset_id, target_raw, target_set_id),
+    )
+    if commit:
+        connection.commit()
+    return target_set_id
+
+
 def split_shared_asset_ids(connection: sqlite3.Connection, commit: bool = True) -> int:
     """Fix assets where multiple registry entries share one asset_id (old format without path).
 

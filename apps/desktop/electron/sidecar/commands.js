@@ -61,6 +61,62 @@ function createSidecarCommands(callJson) {
       return callJson(["asset-detail", "--image-path", String(imagePath)]);
     },
 
+    listSimilarityGroups({ status = "pending", kind, limit = 200 } = {}) {
+      const argv = [
+        "list-similarity-groups",
+        "--status", String(status),
+        "--limit", String(limit),
+      ];
+      if (kind) argv.push("--kind", String(kind));
+      return callJson(argv).then((rows) => rows || []);
+    },
+
+    dismissSimilarityGroup(groupId) {
+      return callJson(["dismiss-similarity-group", "--group-id", String(groupId)]);
+    },
+
+    confirmSimilarityGroup({ groupId, keeperAssetId } = {}) {
+      const argv = ["confirm-similarity-group", "--group-id", String(groupId)];
+      if (keeperAssetId) argv.push("--keeper-asset-id", String(keeperAssetId));
+      return callJson(argv);
+    },
+
+    confirmRawSimilarity({ groupId, rawAssetId } = {}) {
+      const argv = ["confirm-raw-similarity", "--group-id", String(groupId)];
+      if (rawAssetId) argv.push("--raw-asset-id", String(rawAssetId));
+      return callJson(argv);
+    },
+
+    createRelocation({ assetId, sourcePath, destinationPath, mode = "move", expectedSize, expectedHash } = {}) {
+      const argv = [
+        "create-relocation-operation",
+        "--asset-id", String(assetId),
+        "--source-path", String(sourcePath),
+        "--destination-path", String(destinationPath),
+        "--mode", String(mode),
+      ];
+      if (Number.isFinite(expectedSize)) argv.push("--expected-size", String(expectedSize));
+      if (expectedHash) argv.push("--expected-hash", String(expectedHash));
+      return callJson(argv);
+    },
+
+    updateRelocation({ operationId, state, expectedHash, errorText } = {}) {
+      const argv = [
+        "update-relocation-operation",
+        "--operation-id", String(operationId),
+        "--state", String(state),
+      ];
+      if (expectedHash) argv.push("--expected-hash", String(expectedHash));
+      if (errorText) argv.push("--error-text", String(errorText));
+      return callJson(argv);
+    },
+
+    listRelocations({ unfinishedOnly = false, limit = 200 } = {}) {
+      const argv = ["list-relocation-operations", "--limit", String(limit)];
+      if (unfinishedOnly) argv.push("--unfinished-only");
+      return callJson(argv).then((rows) => rows || []);
+    },
+
     listPeopleGroups({ state } = {}) {
       const argv = ["list-people-groups"];
       if (state) argv.push("--state", String(state));

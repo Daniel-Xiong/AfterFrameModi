@@ -35,7 +35,7 @@ def scan_raw_directory(
     processed = 0
     discovered = 0
 
-    upsert_catalog_root(connection, "raw", raw_dir)
+    upsert_catalog_root(connection, "raw", raw_dir, user_declared=True)
     cached_index = load_raw_cache_index(connection, raw_dir)
 
     worker_count = max(1, workers or DEFAULT_SCAN_WORKERS)

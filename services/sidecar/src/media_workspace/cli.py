@@ -14,12 +14,16 @@ from .analysis import analyze_metadata_coverage
 from .ai_repaint import DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, OPENAI_PROVIDER, list_provider_models, run_mock_repaint, run_nanobanana_repaint, run_openai_repaint
 from .db import (
     attach_asset_to_resource_set,
+    backfill_asset_root_memberships,
     cleanup_orphan_image_assets,
+    confirm_raw_similarity_proposal,
+    confirm_similarity_group,
     confirm_match,
     connect,
     verify_assets,
     relink_asset,
     create_job,
+    create_relocation_operation,
     delete_app_setting,
     delete_image_asset_from_catalog,
     find_image_asset_ids_by_stem,
@@ -38,6 +42,8 @@ from .db import (
     list_catalog_roots,
     list_image_assets,
     list_map_points,
+    list_similarity_groups,
+    list_relocation_operations,
     list_assets_for_preview,
     list_pending,
     assign_faces_to_group,
@@ -50,12 +56,14 @@ from .db import (
     set_person_group_cover,
     set_person_group_state,
     set_person_groups_state,
+    set_similarity_group_status,
     set_catalog_path,
     summary,
     upsert_catalog_root,
     list_collections,
     create_collection,
     update_collection,
+    update_relocation_operation,
     delete_collection,
     add_collection_items,
     attach_asset_to_resource_set,
@@ -71,12 +79,14 @@ from .db import (
 )
 from .evaluation import evaluate_ground_truth
 from .ground_truth import export_ground_truth
-from .job_runner import run_ai_repaint_job, run_annotation_job, run_enrichment_job, run_import_job, run_people_index_job, run_preview_job
+from .job_runner import run_ai_repaint_job, run_annotation_job, run_enrichment_job, run_import_job, run_people_index_job, run_preview_job, run_visual_match_job
+from .people_inference import test_remote_connection
 from .preview_service import PreviewService
 from .metadata import extract_image_candidate, iso_mtime
 from .models import MatchDecision
 from .reverse_lookup import iter_image_files, resolve_image, resolve_image_batch
 from .scanner import enrich_raw_assets, scan_raw_directory
+from .visual_evaluation import evaluate_visual_truth
 from .watcher import ImageWatcher
 
 
@@ -215,6 +225,10 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate = subparsers.add_parser("evaluate-ground-truth", parents=[common])
     evaluate.add_argument("--truth-csv", type=Path, required=True)
     evaluate.add_argument("--refresh", action="store_true")
+
+    evaluate_visual = subparsers.add_parser("evaluate-visual-truth", parents=[common])
+    evaluate_visual.add_argument("--truth-csv", type=Path, required=True)
+    evaluate_visual.add_argument("--max-hamming", type=int, default=16)
 
     export_truth = subparsers.add_parser("export-ground-truth", parents=[common])
     export_truth.add_argument("--output-csv", type=Path, required=True)
@@ -412,7 +426,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_roots_parser.add_argument("--path", type=Path, action="append", required=True)
 
     create_job_parser = subparsers.add_parser("create-job", parents=[common])
-    create_job_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index"], required=True)
+    create_job_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index", "visual_match"], required=True)
     create_job_parser.add_argument("--payload-json", default="{}")
     create_job_parser.add_argument("--priority", type=int, default=50)
 
@@ -420,7 +434,7 @@ def build_parser() -> argparse.ArgumentParser:
     get_job_parser.add_argument("--job-id", required=True)
 
     latest_job_parser = subparsers.add_parser("latest-job", parents=[common])
-    latest_job_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index"])
+    latest_job_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index", "visual_match"])
 
     cancel_job_parser = subparsers.add_parser("cancel-job", parents=[common])
     cancel_job_parser.add_argument("--job-id", required=True)
@@ -441,7 +455,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("list-active-jobs", parents=[common])
 
     list_jobs_parser = subparsers.add_parser("list-jobs", parents=[common])
-    list_jobs_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index"])
+    list_jobs_parser.add_argument("--job-type", choices=["import", "enrichment", "preview", "ai_repaint", "text_image", "annotation", "people_model_download", "people_index", "visual_match"])
     list_jobs_parser.add_argument("--limit", type=int, default=20)
 
     list_people_groups_parser = subparsers.add_parser("list-people-groups", parents=[common])
@@ -510,15 +524,70 @@ def build_parser() -> argparse.ArgumentParser:
     run_preview_job_parser.add_argument("--limit", type=int)
     run_preview_job_parser.add_argument("--force", action="store_true")
 
+    run_visual_match_parser = subparsers.add_parser("run-visual-match-job", parents=[common])
+    run_visual_match_parser.add_argument("--job-id", required=True)
+    run_visual_match_parser.add_argument("--probe-root-id", required=True)
+    run_visual_match_parser.add_argument(
+        "--gallery-scope",
+        choices=["catalog_except_probe", "same_root"],
+        default="catalog_except_probe",
+    )
+    run_visual_match_parser.add_argument("--skip-raw-proposals", action="store_true")
+
+    list_similarity_parser = subparsers.add_parser("list-similarity-groups", parents=[common])
+    list_similarity_parser.add_argument(
+        "--status",
+        choices=["pending", "reviewed", "dismissed", "partial"],
+        default="pending",
+    )
+    list_similarity_parser.add_argument("--kind")
+    list_similarity_parser.add_argument("--limit", type=int, default=200)
+
+    dismiss_similarity_parser = subparsers.add_parser("dismiss-similarity-group", parents=[common])
+    dismiss_similarity_parser.add_argument("--group-id", required=True)
+
+    confirm_similarity_parser = subparsers.add_parser("confirm-similarity-group", parents=[common])
+    confirm_similarity_parser.add_argument("--group-id", required=True)
+    confirm_similarity_parser.add_argument("--keeper-asset-id")
+
+    confirm_raw_similarity_parser = subparsers.add_parser("confirm-raw-similarity", parents=[common])
+    confirm_raw_similarity_parser.add_argument("--group-id", required=True)
+    confirm_raw_similarity_parser.add_argument("--raw-asset-id")
+
+    create_relocation_parser = subparsers.add_parser("create-relocation-operation", parents=[common])
+    create_relocation_parser.add_argument("--asset-id", required=True)
+    create_relocation_parser.add_argument("--source-path", required=True)
+    create_relocation_parser.add_argument("--destination-path", required=True)
+    create_relocation_parser.add_argument("--mode", choices=["move", "archive"], default="move")
+    create_relocation_parser.add_argument("--expected-size", type=int)
+    create_relocation_parser.add_argument("--expected-hash")
+
+    update_relocation_parser = subparsers.add_parser("update-relocation-operation", parents=[common])
+    update_relocation_parser.add_argument("--operation-id", required=True)
+    update_relocation_parser.add_argument("--state", required=True)
+    update_relocation_parser.add_argument("--expected-hash")
+    update_relocation_parser.add_argument("--error-text")
+
+    list_relocation_parser = subparsers.add_parser("list-relocation-operations", parents=[common])
+    list_relocation_parser.add_argument("--unfinished-only", action="store_true")
+    list_relocation_parser.add_argument("--limit", type=int, default=200)
+
     run_people_index_parser = subparsers.add_parser("run-people-index-job", parents=[common])
     run_people_index_parser.add_argument("--job-id", required=True)
     run_people_index_parser.add_argument("--model-id", required=True)
     run_people_index_parser.add_argument("--model-version", required=True)
-    run_people_index_parser.add_argument("--model-path", type=Path, required=True)
+    run_people_index_parser.add_argument("--model-path", type=Path)
     run_people_index_parser.add_argument("--manifest-hash", required=True)
     run_people_index_parser.add_argument("--worker-path", type=Path)
+    run_people_index_parser.add_argument("--inference-backend", choices=["local_worker", "remote_http"], default="local_worker")
+    run_people_index_parser.add_argument("--base-url")
+    run_people_index_parser.add_argument("--api-key")
     run_people_index_parser.add_argument("--asset-id", action="append")
     run_people_index_parser.add_argument("--limit", type=int)
+
+    test_people_remote_parser = subparsers.add_parser("test-people-remote-connection", parents=[common])
+    test_people_remote_parser.add_argument("--base-url", required=True)
+    test_people_remote_parser.add_argument("--api-key")
 
     get_provider_token = subparsers.add_parser("get-provider-token", parents=[common])
     get_provider_token.add_argument("--provider", required=True)
@@ -1101,6 +1170,12 @@ def _cmd_analyze_metadata(args, connection, catalog, parser):
     return 0
 
 
+def _cmd_evaluate_visual_truth(args, connection, catalog, parser):
+    payload = evaluate_visual_truth(args.truth_csv.resolve(), max_hamming=args.max_hamming)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _cmd_create_job(args, connection, catalog, parser):
     payload = json.loads(args.payload_json or "{}")
     print(json.dumps(create_job(connection, args.job_type, payload=payload, priority=args.priority), indent=2))
@@ -1273,6 +1348,96 @@ def _cmd_run_preview_job(args, connection, catalog, parser):
     return 0
 
 
+def _cmd_run_visual_match_job(args, connection, catalog, parser):
+    payload = run_visual_match_job(
+        connection,
+        catalog.root,
+        args.job_id,
+        probe_root_id=args.probe_root_id,
+        gallery_scope=args.gallery_scope,
+        include_raw_proposals=not args.skip_raw_proposals,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_list_similarity_groups(args, connection, catalog, parser):
+    payload = list_similarity_groups(
+        connection,
+        status=args.status,
+        kind=args.kind,
+        limit=args.limit,
+    )
+    for group in payload:
+        for member in group["members"]:
+            relative = member.pop("preview_relative_path", None)
+            member["preview_path"] = str((catalog.root / relative).resolve()) if relative else None
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_dismiss_similarity_group(args, connection, catalog, parser):
+    changed = set_similarity_group_status(connection, args.group_id, "dismissed")
+    print(json.dumps({"group_id": args.group_id, "status": "dismissed", "changed": changed}))
+    return 0
+
+
+def _cmd_confirm_similarity_group(args, connection, catalog, parser):
+    payload = confirm_similarity_group(
+        connection,
+        args.group_id,
+        keeper_asset_id=args.keeper_asset_id,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_confirm_raw_similarity(args, connection, catalog, parser):
+    payload = confirm_raw_similarity_proposal(
+        connection,
+        args.group_id,
+        raw_asset_id=args.raw_asset_id,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_create_relocation(args, connection, catalog, parser):
+    payload = create_relocation_operation(
+        connection,
+        asset_id=args.asset_id,
+        source_path=args.source_path,
+        destination_path=args.destination_path,
+        mode=args.mode,
+        expected_size=args.expected_size,
+        expected_hash=args.expected_hash,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_update_relocation(args, connection, catalog, parser):
+    payload = update_relocation_operation(
+        connection,
+        args.operation_id,
+        state=args.state,
+        expected_hash=args.expected_hash,
+        error_text=args.error_text,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_list_relocations(args, connection, catalog, parser):
+    payload = list_relocation_operations(
+        connection,
+        unfinished_only=args.unfinished_only,
+        limit=args.limit,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def _cmd_run_people_index_job(args, connection, catalog, parser):
     payload = run_people_index_job(
         connection,
@@ -1284,7 +1449,16 @@ def _cmd_run_people_index_job(args, connection, catalog, parser):
         worker_path=args.worker_path,
         asset_ids=args.asset_id,
         limit=args.limit,
+        inference_backend=args.inference_backend,
+        base_url=args.base_url,
+        api_key=args.api_key,
     )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_test_people_remote_connection(args, connection, catalog, parser):
+    payload = test_remote_connection(base_url=args.base_url, api_key=args.api_key)
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -1821,6 +1995,7 @@ def _cmd_catalog_roots(args, connection, catalog, parser):
             "root_type": row["root_type"],
             "path": row["path"],
             "is_active": bool(row["is_active"]),
+            "user_declared": bool(row["user_declared"]),
         }
         for row in list_catalog_roots(connection)
     ]
@@ -1829,8 +2004,18 @@ def _cmd_catalog_roots(args, connection, catalog, parser):
 
 
 def _cmd_register_roots(args, connection, catalog, parser):
+    root_ids: list[str] = []
     for root_path in args.path:
-        upsert_catalog_root(connection, args.root_type, root_path.resolve(), commit=False)
+        root_ids.append(
+            upsert_catalog_root(
+                connection,
+                args.root_type,
+                root_path.resolve(),
+                commit=False,
+                user_declared=True,
+            )
+        )
+    backfill_asset_root_memberships(connection, root_ids=root_ids, commit=False)
     connection.commit()
     payload = [
         {
@@ -1838,6 +2023,7 @@ def _cmd_register_roots(args, connection, catalog, parser):
             "root_type": row["root_type"],
             "path": row["path"],
             "is_active": bool(row["is_active"]),
+            "user_declared": bool(row["user_declared"]),
         }
         for row in list_catalog_roots(connection)
     ]
@@ -2032,8 +2218,18 @@ COMMAND_HANDLERS = {
     "run-import-job": _cmd_run_import_job,
     "run-enrichment-job": _cmd_run_enrichment_job,
     "run-preview-job": _cmd_run_preview_job,
+    "run-visual-match-job": _cmd_run_visual_match_job,
+    "list-similarity-groups": _cmd_list_similarity_groups,
+    "dismiss-similarity-group": _cmd_dismiss_similarity_group,
+    "confirm-similarity-group": _cmd_confirm_similarity_group,
+    "confirm-raw-similarity": _cmd_confirm_raw_similarity,
+    "create-relocation-operation": _cmd_create_relocation,
+    "update-relocation-operation": _cmd_update_relocation,
+    "list-relocation-operations": _cmd_list_relocations,
     "run-people-index-job": _cmd_run_people_index_job,
+    "test-people-remote-connection": _cmd_test_people_remote_connection,
     "evaluate-ground-truth": _cmd_evaluate_ground_truth,
+    "evaluate-visual-truth": _cmd_evaluate_visual_truth,
     "export-ground-truth": _cmd_export_ground_truth,
     "resolve-image": _cmd_resolve_image,
     "resolve-export-batch": _cmd_resolve_image_batch,

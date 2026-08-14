@@ -52,6 +52,24 @@ class Thresholds:
 
 
 @dataclass(slots=True)
+class VisualThresholds:
+    recall_limit: int = 64
+    metadata_channel_limit: int = 24
+    hash_channel_limit: int = 64
+    hamming_same_frame: int = 8
+    hamming_near: int = 14
+    aligned_error_same_frame: float = 0.12
+    aligned_error_near: float = 0.2
+    aspect_tolerance: float = 0.02
+    burst_window_seconds: float = 1.0
+    crop_parent_limit: int = 16
+    crop_region_limit: int = 4
+    crop_error_max: float = 0.16
+    max_cluster_members: int = 50
+    max_neighbors_per_asset: int = 16
+
+
+@dataclass(slots=True)
 class WorkspaceConfig:
     catalog_path: Path
     raw_dirs: tuple[Path, ...] = ()

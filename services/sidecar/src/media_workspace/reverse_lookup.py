@@ -379,7 +379,13 @@ def resolve_image_batch(
 
     for image_dir in image_dirs:
         if persist_roots:
-            upsert_catalog_root(connection, "image", image_dir.resolve(), commit=False)
+            upsert_catalog_root(
+                connection,
+                "image",
+                image_dir.resolve(),
+                commit=False,
+                user_declared=True,
+            )
         for path in iter_image_files([image_dir.resolve()]):
             if respect_tombstones or validate_sources:
                 if _is_tombstoned(connection, tombstones, path):

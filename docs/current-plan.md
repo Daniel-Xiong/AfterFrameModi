@@ -56,6 +56,14 @@ The project is now in a good validation state:
 - raw scan and batch reverse lookup are both in a workable range now
 - the next optimization question is whether to keep pushing Python resolve throughput, or shift effort to enrichment / previews / UX
 
+### Parallel visual-cleanup track
+
+Duplicate/compressed/crop/near-duplicate cleanup is a separate matching system,
+documented in [Duplicate, Similar, Crop, and Source Matching](duplicates-similar-design.md).
+It uses catalog-scoped, bounded visual recall and must not widen or replace the
+frozen RAW matcher. RAW visual results are proposals that still require the
+existing explicit confirmation path.
+
 ## Recommended Next Steps
 
 ### 1. Freeze matcher v0

@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, Check, Cpu, Download, FolderPlus, LoaderCircle, Play, Trash2, UsersRound } from "lucide-react";
+import { AlertCircle, Check, Cpu, Download, FolderPlus, Globe, LoaderCircle, Play, Trash2, UsersRound } from "lucide-react";
 import api from "../../api";
-import { Callout, FieldRow, Group, PrimaryButton, SecondaryButton, Toggle } from "./SettingsPrimitives";
+import { Callout, FieldRow, Group, PrimaryButton, SecondaryButton, TextInput, Toggle } from "./SettingsPrimitives";
 
 function emptySettings() {
-  return { activeModelKey: null, activeModel: null, models: [], automaticDownloads: false, download: { available: false } };
+  return {
+    activeModelKey: null,
+    activeModel: null,
+    models: [],
+    automaticDownloads: false,
+    inferenceBackend: "local_worker",
+    remote: { baseUrl: "", apiKeySet: false, modelId: "remote-arcface", modelVersion: "1", name: "Remote FastAPI", embeddingDimensions: 512 },
+    download: { available: false },
+  };
 }
 
 function formatSize(bytes) {
@@ -60,6 +68,9 @@ export default function PeopleSettings() {
   const [job, setJob] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [remoteUrl, setRemoteUrl] = useState("");
+  const [remoteApiKey, setRemoteApiKey] = useState("");
+  const [remoteStatus, setRemoteStatus] = useState(null);
 
   const refresh = useCallback(async () => {
     const [nextSettings, nextJob] = await Promise.all([
@@ -68,6 +79,8 @@ export default function PeopleSettings() {
     ]);
     setSettings(nextSettings || emptySettings());
     setJob(nextJob || null);
+    setRemoteUrl(nextSettings?.remote?.baseUrl || "");
+    setRemoteApiKey("");
   }, []);
 
   useEffect(() => {
@@ -103,9 +116,68 @@ export default function PeopleSettings() {
   const model = settings.activeModel;
   const indexing = !!job?.active;
   const progress = Math.round(Math.max(0, Math.min(1, Number(job?.progress || 0))) * 100);
+  const usingRemote = settings.inferenceBackend === "remote_http";
+  const canIndex = usingRemote ? !!settings.remote?.baseUrl : !!model?.available;
 
   return (
     <div>
+      <Group title={t("people.inferenceTitle")} subtitle={t("people.inferenceSubtitle")} badge={usingRemote ? "Remote" : "Local"}>
+        <FieldRow label={t("people.inferenceBackend")} hint={t("people.inferenceBackendHint")}>
+          <div className="flex flex-wrap gap-2">
+            <SecondaryButton disabled={!!busy || !usingRemote} onClick={() => perform("backend-local", () => api.setPeopleInferenceBackend("local_worker"))}>
+              {t("people.backendLocal")}
+            </SecondaryButton>
+            <SecondaryButton disabled={!!busy || usingRemote} onClick={() => perform("backend-remote", () => api.setPeopleInferenceBackend("remote_http"))}>
+              {t("people.backendRemote")}
+            </SecondaryButton>
+          </div>
+        </FieldRow>
+        {usingRemote && (
+          <>
+            <FieldRow label={t("people.remoteUrl")} hint={t("people.remoteUrlHint")}>
+              <TextInput value={remoteUrl} onChange={setRemoteUrl} placeholder="http://192.168.1.10:8000" />
+            </FieldRow>
+            <FieldRow label={t("people.remoteApiKey")} hint={t("people.remoteApiKeyHint")}>
+              <TextInput
+                value={remoteApiKey}
+                onChange={setRemoteApiKey}
+                placeholder={settings.remote?.apiKeySet ? t("people.remoteApiKeySaved") : t("people.remoteApiKeyPlaceholder")}
+                type="password"
+              />
+            </FieldRow>
+            <FieldRow label={t("people.remoteActions")} hint={t("people.remoteActionsHint")}>
+              <div className="flex flex-wrap gap-2">
+                <SecondaryButton disabled={!!busy || !remoteUrl.trim()} onClick={() => perform("remote-save", async () => {
+                  await api.setPeopleRemoteConfig({
+                    baseUrl: remoteUrl.trim(),
+                    ...(remoteApiKey ? { apiKey: remoteApiKey } : {}),
+                  });
+                  setRemoteApiKey("");
+                })}>
+                  {t("people.remoteSave")}
+                </SecondaryButton>
+                <SecondaryButton disabled={!!busy || !remoteUrl.trim()} onClick={() => perform("remote-test", async () => {
+                  const result = await api.testPeopleRemoteConnection({
+                    baseUrl: remoteUrl.trim(),
+                    ...(remoteApiKey ? { apiKey: remoteApiKey } : {}),
+                  });
+                  setRemoteStatus(result);
+                })}>
+                  {t("people.remoteTest")}
+                </SecondaryButton>
+              </div>
+            </FieldRow>
+            {remoteStatus?.ok && (
+              <div className="px-1 pb-2 text-[11px] text-accent">
+                <Globe className="mr-1 inline h-3.5 w-3.5" />
+                {t("people.remoteConnected")}
+              </div>
+            )}
+          </>
+        )}
+      </Group>
+
+      {!usingRemote && (
       <Group title={t("people.modelTitle")} subtitle={t("people.modelSubtitle")} badge="Local">
         {model ? (
           <div className="flex items-center gap-3 py-3">
@@ -141,8 +213,9 @@ export default function PeopleSettings() {
           <Toggle on={settings.automaticDownloads} disabled={!settings.download?.available} onChange={(value) => perform("updates", () => api.setPeopleAutomaticDownloads(value))} />
         </FieldRow>
       </Group>
+      )}
 
-      {settings.models?.length > 0 && (
+      {!usingRemote && settings.models?.length > 0 && (
         <Group title={t("people.installedModels")}>
           {settings.models.map((entry) => (
             <ModelRow
@@ -170,8 +243,8 @@ export default function PeopleSettings() {
             </div>
           </div>
         ) : (
-          <FieldRow label={t("people.analyzeLibrary")} hint={t("people.analyzeLibraryHint")}>
-            <PrimaryButton disabled={!model?.available || !!busy} onClick={() => perform("index", async () => {
+          <FieldRow label={t("people.analyzeLibrary")} hint={usingRemote ? t("people.analyzeLibraryRemoteHint") : t("people.analyzeLibraryHint")}>
+            <PrimaryButton disabled={!canIndex || !!busy} onClick={() => perform("index", async () => {
               const started = await api.startPeopleIndex({ priority: 5 });
               window.dispatchEvent(new CustomEvent("people-index:started", { detail: started }));
             })}>
@@ -181,7 +254,7 @@ export default function PeopleSettings() {
         )}
       </Group>
 
-      <Callout>{t("people.privacy")}</Callout>
+      <Callout>{usingRemote ? t("people.privacyRemote") : t("people.privacy")}</Callout>
       {error && <div role="alert" className="mt-3 flex gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-300"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{error}</div>}
     </div>
   );
