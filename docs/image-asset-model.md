@@ -95,3 +95,12 @@ This abstraction is also the right performance boundary:
 - preview generation operates on cached resources, not arbitrary files
 
 That is the path toward a catalog that behaves more like Lightroom than a generic DAM clone.
+
+## Visual Relationship Cleanup
+
+Exact files, compressed exports, and crops can be proposed as members of one
+`ImageAsset`. Bursts and merely similar images remain separate identities, and
+RAW-source proposals continue through the existing registry confirmation path.
+
+The bounded recall, confirmation, root-scope, and file-safety contracts are
+defined in [Duplicate, Similar, Crop, and Source Matching](duplicates-similar-design.md).

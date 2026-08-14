@@ -1,0 +1,2 @@
+probe_path,gallery_path,relation,notes
+/absolute/path/to/probe.jpg,/absolute/path/to/gallery.jpg,compressed_of,replace with curated files
