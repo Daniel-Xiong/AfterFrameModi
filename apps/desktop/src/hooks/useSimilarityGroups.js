@@ -98,6 +98,23 @@ export default function useSimilarityGroups({ enabled, catalogKey, pushToast }) 
     ));
   }, []);
 
+  const relocate = useCallback(async (members, { mode = "move" } = {}) => {
+    const result = await api.relocateAssets({
+      items: (members || []).map((member) => ({ assetId: member.asset_id })),
+      mode,
+    });
+    if (result?.failed?.length) {
+      pushToast?.({
+        title: "Some files could not be moved",
+        message: `${result.failed.length} failed`,
+        tone: "error",
+        ttl: 6000,
+      });
+    }
+    await load();
+    return result;
+  }, [load, pushToast]);
+
   return {
     groups,
     loading,
@@ -108,6 +125,7 @@ export default function useSimilarityGroups({ enabled, catalogKey, pushToast }) 
     dismiss,
     confirm,
     confirmRaw,
+    relocate,
     removeGroupsContaining,
   };
 }

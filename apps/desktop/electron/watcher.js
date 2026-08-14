@@ -20,6 +20,7 @@ let watcher = null;
 let getWindow = () => null;
 let catalog = { path: () => null, read: () => ({}), update: async () => {} };
 const pending = new Set();
+const suppressed = new Set();
 let flushTimer = null;
 let generation = 0;
 
@@ -52,6 +53,7 @@ function onMediaChange(filePath, eventGeneration, catalogPath) {
   if (eventGeneration !== generation || !sameCatalog(catalog.path(), catalogPath)) return;
   if (!MEDIA_RE.test(filePath)) return;
   if (path.basename(filePath).startsWith(".")) return; // skip dotfiles / temp
+  if (suppressed.has(path.resolve(filePath))) return;
   pending.add(filePath);
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = setTimeout(() => flush(eventGeneration, catalogPath), 1000); // debounce a burst (e.g. a 200-file export)
@@ -125,7 +127,16 @@ function register({ ipcMain, getMainWindow, getCatalogPath, readCatalogSettings,
   // For the contextual "add to watched?" toast: which of these paths are dirs.
   ipcMain.handle("app:stat-dirs", (_e, paths) => (paths || []).map(String).filter(isDir));
 
-  return { start: rebuild, rebuild };
+  return {
+    start: rebuild,
+    rebuild,
+    suppress(paths) {
+      for (const entry of paths || []) suppressed.add(path.resolve(String(entry)));
+    },
+    release(paths) {
+      for (const entry of paths || []) suppressed.delete(path.resolve(String(entry)));
+    },
+  };
 }
 
 module.exports = { register };

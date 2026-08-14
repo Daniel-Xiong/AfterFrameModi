@@ -13,6 +13,7 @@ from .collections import _collection_id, list_collections, create_collection, up
 from .maintenance import cleanup_orphan_image_assets, delete_image_asset_from_catalog, summary, verify_assets, relink_asset
 from .roots import assign_asset_root_membership, backfill_asset_root_memberships, list_assets_in_roots, list_gallery_assets_except_roots, list_user_catalog_roots
 from .similarity import get_visual_signature, upsert_visual_signature, replace_similarity_group, set_similarity_group_status, get_similarity_group, list_similarity_groups, prune_empty_similarity_groups, similarity_group_id, confirm_similarity_group, confirm_raw_similarity_proposal
+from .relocation import create_relocation_operation, update_relocation_operation, get_relocation_operation, list_relocation_operations
 from .jobs import _UNSET  # sentinel shared with update_job callers
 from .core import _file_id, RESOLVER_VERSION
 from ..schema import SCHEMA_VERSION

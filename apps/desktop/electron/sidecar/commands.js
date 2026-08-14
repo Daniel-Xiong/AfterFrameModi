@@ -87,6 +87,36 @@ function createSidecarCommands(callJson) {
       return callJson(argv);
     },
 
+    createRelocation({ assetId, sourcePath, destinationPath, mode = "move", expectedSize, expectedHash } = {}) {
+      const argv = [
+        "create-relocation-operation",
+        "--asset-id", String(assetId),
+        "--source-path", String(sourcePath),
+        "--destination-path", String(destinationPath),
+        "--mode", String(mode),
+      ];
+      if (Number.isFinite(expectedSize)) argv.push("--expected-size", String(expectedSize));
+      if (expectedHash) argv.push("--expected-hash", String(expectedHash));
+      return callJson(argv);
+    },
+
+    updateRelocation({ operationId, state, expectedHash, errorText } = {}) {
+      const argv = [
+        "update-relocation-operation",
+        "--operation-id", String(operationId),
+        "--state", String(state),
+      ];
+      if (expectedHash) argv.push("--expected-hash", String(expectedHash));
+      if (errorText) argv.push("--error-text", String(errorText));
+      return callJson(argv);
+    },
+
+    listRelocations({ unfinishedOnly = false, limit = 200 } = {}) {
+      const argv = ["list-relocation-operations", "--limit", String(limit)];
+      if (unfinishedOnly) argv.push("--unfinished-only");
+      return callJson(argv).then((rows) => rows || []);
+    },
+
     listPeopleGroups({ state } = {}) {
       const argv = ["list-people-groups"];
       if (state) argv.push("--state", String(state));

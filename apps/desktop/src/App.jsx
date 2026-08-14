@@ -1053,7 +1053,8 @@ export default function App() {
                   if (changed) void similarityGroups.load();
                 });
               }}
-              onMove={() => pushToast?.({ title: tNav("duplicates.moveComing"), ttl: 3000 })}
+              onMove={(members) => similarityGroups.relocate(members)}
+              onArchive={(members) => similarityGroups.relocate(members, { mode: "archive" })}
             />
           ) : (
             <>

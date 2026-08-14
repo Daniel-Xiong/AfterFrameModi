@@ -84,6 +84,7 @@
     "removeCatalog": "Remove from catalog",
     "trash": "Move to Trash",
     "move": "Move to storage",
+    "archive": "Archive out of catalog",
     "moveComing": "Choose a destination in the move dialog",
     "keeper": "Keep: {{name}}",
     "kind": {

@@ -63,6 +63,7 @@ const collectionsIpc = require("./ipc/collections");
 const aiIpc = require("./ipc/ai");
 const jobsIpc = require("./ipc/jobs");
 const similarityIpc = require("./ipc/similarity");
+const relocationIpc = require("./ipc/relocation");
 const browseIpc = require("./ipc/browse");
 const assetsIpc = require("./ipc/assets");
 const saveFileIpc = require("./ipc/saveFile");
@@ -1394,6 +1395,15 @@ similarityIpc.register({
   getCatalogState: () => ({ currentCatalogPath, catalogHasDb }),
   formatJobStatus,
   latestJobStatus,
+});
+relocationIpc.register({
+  ipcMain,
+  dialog,
+  BrowserWindow,
+  shell,
+  commands: sidecarCommands,
+  watcherApi,
+  addAllowedMediaDir,
 });
 
 aiIpc.register({

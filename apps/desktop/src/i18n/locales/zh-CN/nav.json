@@ -82,6 +82,7 @@
     "removeCatalog": "从图库移除",
     "trash": "移到废纸篓",
     "move": "移动到存储位置",
+    "archive": "归档并移出图库",
     "moveComing": "请在移动对话框中选择目标位置",
     "keeper": "保留：{{name}}",
     "kind": {

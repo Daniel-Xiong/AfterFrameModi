@@ -105,6 +105,8 @@ contextBridge.exposeInMainWorld("mediaWorkspace", {
   dismissSimilarityGroup: (groupId) => ipcRenderer.invoke("workspace:similarity-dismiss", groupId),
   confirmSimilarityGroup: (options) => ipcRenderer.invoke("workspace:similarity-confirm", options),
   confirmRawSimilarity: (options) => ipcRenderer.invoke("workspace:similarity-confirm-raw", options),
+  relocateAssets: (options) => ipcRenderer.invoke("workspace:relocate-assets", options),
+  listRelocations: (options) => ipcRenderer.invoke("workspace:list-relocations", options),
   getAiProviderToken: (provider) => ipcRenderer.invoke("workspace:get-ai-provider-token", provider),
   setAiProviderToken: (provider, token) => ipcRenderer.invoke("workspace:set-ai-provider-token", provider, token),
   deleteAiProviderToken: (provider) => ipcRenderer.invoke("workspace:delete-ai-provider-token", provider),

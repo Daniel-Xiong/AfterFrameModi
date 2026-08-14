@@ -23,6 +23,7 @@ from .db import (
     verify_assets,
     relink_asset,
     create_job,
+    create_relocation_operation,
     delete_app_setting,
     delete_image_asset_from_catalog,
     find_image_asset_ids_by_stem,
@@ -42,6 +43,7 @@ from .db import (
     list_image_assets,
     list_map_points,
     list_similarity_groups,
+    list_relocation_operations,
     list_assets_for_preview,
     list_pending,
     assign_faces_to_group,
@@ -61,6 +63,7 @@ from .db import (
     list_collections,
     create_collection,
     update_collection,
+    update_relocation_operation,
     delete_collection,
     add_collection_items,
     attach_asset_to_resource_set,
@@ -549,6 +552,24 @@ def build_parser() -> argparse.ArgumentParser:
     confirm_raw_similarity_parser = subparsers.add_parser("confirm-raw-similarity", parents=[common])
     confirm_raw_similarity_parser.add_argument("--group-id", required=True)
     confirm_raw_similarity_parser.add_argument("--raw-asset-id")
+
+    create_relocation_parser = subparsers.add_parser("create-relocation-operation", parents=[common])
+    create_relocation_parser.add_argument("--asset-id", required=True)
+    create_relocation_parser.add_argument("--source-path", required=True)
+    create_relocation_parser.add_argument("--destination-path", required=True)
+    create_relocation_parser.add_argument("--mode", choices=["move", "archive"], default="move")
+    create_relocation_parser.add_argument("--expected-size", type=int)
+    create_relocation_parser.add_argument("--expected-hash")
+
+    update_relocation_parser = subparsers.add_parser("update-relocation-operation", parents=[common])
+    update_relocation_parser.add_argument("--operation-id", required=True)
+    update_relocation_parser.add_argument("--state", required=True)
+    update_relocation_parser.add_argument("--expected-hash")
+    update_relocation_parser.add_argument("--error-text")
+
+    list_relocation_parser = subparsers.add_parser("list-relocation-operations", parents=[common])
+    list_relocation_parser.add_argument("--unfinished-only", action="store_true")
+    list_relocation_parser.add_argument("--limit", type=int, default=200)
 
     run_people_index_parser = subparsers.add_parser("run-people-index-job", parents=[common])
     run_people_index_parser.add_argument("--job-id", required=True)
@@ -1373,6 +1394,42 @@ def _cmd_confirm_raw_similarity(args, connection, catalog, parser):
     return 0
 
 
+def _cmd_create_relocation(args, connection, catalog, parser):
+    payload = create_relocation_operation(
+        connection,
+        asset_id=args.asset_id,
+        source_path=args.source_path,
+        destination_path=args.destination_path,
+        mode=args.mode,
+        expected_size=args.expected_size,
+        expected_hash=args.expected_hash,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_update_relocation(args, connection, catalog, parser):
+    payload = update_relocation_operation(
+        connection,
+        args.operation_id,
+        state=args.state,
+        expected_hash=args.expected_hash,
+        error_text=args.error_text,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_list_relocations(args, connection, catalog, parser):
+    payload = list_relocation_operations(
+        connection,
+        unfinished_only=args.unfinished_only,
+        limit=args.limit,
+    )
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def _cmd_run_people_index_job(args, connection, catalog, parser):
     payload = run_people_index_job(
         connection,
@@ -2149,6 +2206,9 @@ COMMAND_HANDLERS = {
     "dismiss-similarity-group": _cmd_dismiss_similarity_group,
     "confirm-similarity-group": _cmd_confirm_similarity_group,
     "confirm-raw-similarity": _cmd_confirm_raw_similarity,
+    "create-relocation-operation": _cmd_create_relocation,
+    "update-relocation-operation": _cmd_update_relocation,
+    "list-relocation-operations": _cmd_list_relocations,
     "run-people-index-job": _cmd_run_people_index_job,
     "evaluate-ground-truth": _cmd_evaluate_ground_truth,
     "evaluate-visual-truth": _cmd_evaluate_visual_truth,

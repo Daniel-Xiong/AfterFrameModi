@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, Copy, FolderInput, Link2, LoaderCircle, RefreshCw, ScanSearch, Trash2, X } from "lucide-react";
+import { Archive, Check, Copy, FolderInput, Link2, LoaderCircle, RefreshCw, ScanSearch, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatBytes, localFileUrl } from "../utils/format";
 
@@ -9,7 +9,7 @@ function relationLabel(t, kind) {
   return t(`duplicates.kind.${kind}`, { defaultValue: kind.replaceAll("_", " ") });
 }
 
-function GroupCard({ group, onConfirm, onConfirmRaw, onDismiss, onDeleteCatalog, onTrash, onMove }) {
+function GroupCard({ group, onConfirm, onConfirmRaw, onDismiss, onDeleteCatalog, onTrash, onMove, onArchive }) {
   const { t } = useTranslation("nav");
   const [keeperId, setKeeperId] = useState(group.representative_asset_id);
   const keeper = group.members?.find((member) => member.asset_id === keeperId);
@@ -96,6 +96,10 @@ function GroupCard({ group, onConfirm, onConfirmRaw, onDismiss, onDeleteCatalog,
               <FolderInput className="h-3.5 w-3.5" />
               {t("duplicates.move")}
             </button>
+            <button className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[11px] text-text hover:bg-hover" onClick={() => onArchive(removable)}>
+              <Archive className="h-3.5 w-3.5" />
+              {t("duplicates.archive")}
+            </button>
           </>
         )}
         <span className="ml-auto text-[10px] text-muted2">
@@ -106,7 +110,7 @@ function GroupCard({ group, onConfirm, onConfirmRaw, onDismiss, onDeleteCatalog,
   );
 }
 
-export default function DuplicatesView({ similarity, roots, onDeleteCatalog, onTrash, onMove }) {
+export default function DuplicatesView({ similarity, roots, onDeleteCatalog, onTrash, onMove, onArchive }) {
   const { t } = useTranslation("nav");
   const imageRoots = useMemo(
     () => (roots || []).filter((root) => root.root_type === "image" && root.user_declared !== false),
@@ -162,6 +166,7 @@ export default function DuplicatesView({ similarity, roots, onDeleteCatalog, onT
                 onDeleteCatalog={onDeleteCatalog}
                 onTrash={onTrash}
                 onMove={onMove}
+                onArchive={onArchive}
               />
             ))}
           </div>
