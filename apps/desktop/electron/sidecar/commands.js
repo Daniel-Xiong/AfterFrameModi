@@ -73,6 +73,14 @@ function createSidecarCommands(callJson) {
       return callJson(argv).then((rows) => rows || []);
     },
 
+    setBurstKeeper({ groupId, assetId } = {}) {
+      return callJson([
+        "set-burst-keeper",
+        "--group-id", String(groupId),
+        "--asset-id", String(assetId),
+      ]);
+    },
+
     peopleGroupDetail({ groupId, faceLimit, faceOffset } = {}) {
       const argv = ["people-group-detail", "--group-id", String(groupId)];
       if (faceLimit) argv.push("--face-limit", String(faceLimit));

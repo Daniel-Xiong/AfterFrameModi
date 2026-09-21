@@ -95,6 +95,12 @@ function register({ ipcMain, commands, getCatalogState }) {
     }
   });
 
+  ipcMain.handle("workspace:set-burst-keeper", async (_event, options) => {
+    const { currentCatalogPath, catalogHasDb } = getCatalogState();
+    if (!currentCatalogPath || !catalogHasDb()) throw new Error("Open a catalog first.");
+    return await commands.setBurstKeeper(options || {});
+  });
+
   ipcMain.handle("workspace:people-group-detail", async (_event, options) => {
     const { currentCatalogPath, catalogHasDb } = getCatalogState();
     if (!currentCatalogPath || !catalogHasDb()) return null;

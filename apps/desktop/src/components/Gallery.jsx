@@ -466,6 +466,15 @@ const CardContent = memo(function CardContent({
             {formatDuration(item.image_metadata?.duration)}
           </div>
         ) : null}
+        {item.burst_member_count > 1 ? (
+          <div
+            className="pointer-events-none absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white"
+            title={t("gallery.burstCount", { count: item.burst_member_count })}
+          >
+            <Images className="h-2.5 w-2.5" />
+            {item.burst_member_count}
+          </div>
+        ) : null}
       </div>
       {captionHeight > 0 ? (
         <div className="px-0.5 pt-1.5">

@@ -18,9 +18,12 @@ const SERVER_INFO = { name: "afterframe", version: "0.1.0" };
 const SERVER_INSTRUCTIONS = `AfterFrame is a desktop photo library the user is running right now. You are operating on their real catalog.
 
 Domain model:
-- ASSET: one photo (an export/processed image, optionally paired with its RAW source file). Identified by asset_id.
-- RESOURCE SET (version stack): a family of versions of the same photo — original, crops, AI repaints. crop_assets adds versions; originals are never modified.
+- ASSET: one file on disk (JPEG, RAW, or video), identified by asset_id.
+- CAPTURE UNIT: one shutter. JPEG + RAW + sidecar belong together. The gallery card is the unit's display version.
+- RESOURCE SET (version stack): every capture unit has one — original, crops, AI repaints. crop_assets adds versions; originals are never modified.
+- BURST GROUP: consecutive capture units from the same camera. The gallery shows the keeper; other burst shots live in the inspector.
 - COLLECTION: a manual album. Smart collections are rule-based and read-only here.
+- Similar-image clusters are an overlay on capture-unit display versions, not a grouping layer.
 - JOB: long-running background work (import / annotation / previews). Jobs appear in the app's JobDock where the user can watch and cancel them.
 
 Working style:

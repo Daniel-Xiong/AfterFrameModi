@@ -351,6 +351,71 @@ def _migrate_to_8(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_to_9(connection: sqlite3.Connection) -> None:
+    """Capture units + burst groups. Backfill from existing assets."""
+    for statement in (
+        """
+        CREATE TABLE IF NOT EXISTS capture_units (
+            unit_id TEXT PRIMARY KEY,
+            display_asset_id TEXT NOT NULL,
+            resource_set_id TEXT NOT NULL UNIQUE,
+            capture_time TEXT,
+            camera_model TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(display_asset_id) REFERENCES assets(asset_id),
+            FOREIGN KEY(resource_set_id) REFERENCES resource_sets(set_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS capture_unit_members (
+            unit_id TEXT NOT NULL,
+            asset_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('display', 'raw', 'version', 'incamera')),
+            PRIMARY KEY (unit_id, asset_id),
+            FOREIGN KEY(unit_id) REFERENCES capture_units(unit_id) ON DELETE CASCADE,
+            FOREIGN KEY(asset_id) REFERENCES assets(asset_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS capture_unit_sidecars (
+            unit_id TEXT NOT NULL,
+            path TEXT NOT NULL,
+            PRIMARY KEY (unit_id, path),
+            FOREIGN KEY(unit_id) REFERENCES capture_units(unit_id) ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS burst_groups (
+            group_id TEXT PRIMARY KEY,
+            display_asset_id TEXT NOT NULL,
+            member_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(display_asset_id) REFERENCES assets(asset_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS burst_group_items (
+            group_id TEXT NOT NULL,
+            resource_set_id TEXT NOT NULL,
+            unit_id TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            is_keeper INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (group_id, resource_set_id),
+            FOREIGN KEY(group_id) REFERENCES burst_groups(group_id) ON DELETE CASCADE,
+            FOREIGN KEY(resource_set_id) REFERENCES resource_sets(set_id),
+            FOREIGN KEY(unit_id) REFERENCES capture_units(unit_id) ON DELETE CASCADE
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_capture_units_display ON capture_units(display_asset_id)",
+        "CREATE INDEX IF NOT EXISTS idx_capture_unit_members_asset ON capture_unit_members(asset_id)",
+        "CREATE INDEX IF NOT EXISTS idx_burst_groups_display ON burst_groups(display_asset_id)",
+        "CREATE INDEX IF NOT EXISTS idx_burst_group_items_unit ON burst_group_items(unit_id)",
+    ):
+        connection.execute(statement)
+
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     3: _migrate_to_3,
     4: _migrate_to_4,
@@ -358,6 +423,7 @@ MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     6: _migrate_to_6,
     7: _migrate_to_7,
     8: _migrate_to_8,
+    9: _migrate_to_9,
 }
 
 

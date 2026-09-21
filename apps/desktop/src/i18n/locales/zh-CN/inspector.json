@@ -14,6 +14,9 @@
     "duplicates": "重复项",
     "sourceImages": "源图像",
     "otherVersions": "其他版本",
+    "captureUnit": "拍摄单元",
+    "burst": "连拍",
+    "similar": "相似",
     "people": "人物"
   },
   "rows": {
@@ -25,6 +28,7 @@
     "type": "类型",
     "asset": "成品",
     "rawSource": "RAW 源",
+    "sidecar": "配置文件",
     "lastEditedBy": "上次编辑",
     "camera": "相机",
     "lens": "镜头",
@@ -60,6 +64,9 @@
     "removed": "已移出，此脸不会再被自动归回原组",
     "reassigned": "已更正到「{{name}}」",
     "correctionFailed": "更正失败",
+    "setBurstCover": "将这张设为连拍封面",
+    "burstCoverUpdated": "已更新连拍封面",
+    "burstCoverFailed": "设置连拍封面失败",
     "setCover": "设为封面图",
     "coverCurrent": "当前封面图",
     "coverUpdated": "已更新人物封面",

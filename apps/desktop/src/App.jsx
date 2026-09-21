@@ -1178,6 +1178,7 @@ export default function App() {
               onPeopleChanged={() => workspace.reloadDetail?.()}
               onJumpToLocation={jumpToAssetLocation}
               onLocationChanged={() => workspace.bumpCatalogRevision()}
+              onGraphChanged={() => workspace.refreshAll({ force: true })}
               pushToast={pushToast}
               onTagFilter={(tag) => {
                 if (!tag) return;

@@ -321,6 +321,9 @@ def delete_image_asset_from_catalog(
         deleted_preview_paths.append(str(preview_path))
     connection.execute("DELETE FROM preview_entries WHERE asset_id = ?", (asset_id,))
 
+    from .capture_graph import detach_asset_from_capture_graph, rebuild_capture_graph
+    detach_asset_from_capture_graph(connection, asset_id)
+
     set_row = get_resource_set_for_asset(connection, asset_id)
     if set_row is not None:
         set_id = str(set_row["set_id"])
@@ -378,6 +381,8 @@ def delete_image_asset_from_catalog(
     # The FK cascade would clear asset_locations but not its R*Tree row.
     delete_asset_location(connection, asset_id)
     connection.execute("DELETE FROM assets WHERE asset_id = ?", (asset_id,))
+
+    rebuild_capture_graph(connection, commit=False)
 
     if commit:
         connection.commit()

@@ -1,5 +1,9 @@
 # ImageAsset Model
 
+Superseded as the grouping spec by [`asset-unit-model.md`](asset-unit-model.md)
+(capture unit → version family → burst). This note remains the rationale for
+treating a logical image as more than a file path.
+
 The catalog should stop thinking in terms of file lists and start thinking in terms of one abstract image object with attached physical resources.
 
 ## Core Object

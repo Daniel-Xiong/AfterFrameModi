@@ -156,6 +156,7 @@ contextBridge.exposeInMainWorld("mediaWorkspace", {
   listPeopleGroups: (options) => ipcRenderer.invoke("workspace:list-people-groups", options),
   peopleGroupDetail: (options) => ipcRenderer.invoke("workspace:people-group-detail", options),
   similarPeopleGroups: (options) => ipcRenderer.invoke("workspace:similar-people-groups", options),
+  setBurstKeeper: (options) => ipcRenderer.invoke("workspace:set-burst-keeper", options),
   renamePeopleGroup: (options) => ipcRenderer.invoke("workspace:rename-people-group", options),
   setPeopleGroupCover: (options) => ipcRenderer.invoke("workspace:set-people-group-cover", options),
   setPeopleGroupState: (options) => ipcRenderer.invoke("workspace:set-people-group-state", options),

@@ -191,6 +191,7 @@
     "missing": "Missing",
     "missingTip": "Original file moved or deleted",
     "hasPerson": "Contains a detected face",
+    "burstCount": "{{count}} burst shots",
     "menu": {
       "edit": "Edit…",
       "compare": "Compare",
