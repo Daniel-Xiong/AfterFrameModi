@@ -3,6 +3,8 @@
 Canonical grouping for the catalog. Physical files stay one-row-per-file;
 everything users browse is a stack of groups on top of those rows.
 
+How this should appear in the app: [`asset-unit-ux.md`](asset-unit-ux.md).
+
 ## Layers
 
 ```
