@@ -887,9 +887,10 @@ export default function Gallery({
     ? displayMode === "justified" ? Math.ceil(metrics.containerHeight) : metrics.totalHeight
     : 0;
 
-  const visibleItems = metrics
-    ? displayMode === "justified" ? metrics.visibleBoxes : metrics.visibleItems
-      : [];
+  const visibleItems = useMemo(() => {
+    if (!metrics) return [];
+    return displayMode === "justified" ? metrics.visibleBoxes : metrics.visibleItems;
+  }, [metrics, displayMode]);
 
   const fit = displayMode === "justified" ? "contain" : "cover";
 

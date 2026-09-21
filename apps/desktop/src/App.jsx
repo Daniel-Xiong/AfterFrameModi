@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { filterTitle } from "./utils/format";
 import useWorkspace from "./hooks/useWorkspace";
@@ -318,7 +318,7 @@ export default function App() {
   const [similarBusy, setSimilarBusy] = useState(false);
   const [similarChecked, setSimilarChecked] = useState({});
 
-  const startSimilarSession = async (seedAssetId) => {
+  const startSimilarSession = useCallback(async (seedAssetId) => {
     setSimilarBusy(true);
     try {
       pushToast?.({ title: tNav("similar.scanning"), ttl: 3000 });
@@ -344,7 +344,7 @@ export default function App() {
     } finally {
       setSimilarBusy(false);
     }
-  };
+  }, [pushToast, tNav]);
 
   const prepareDragSelectionBurst = (assetId, event) => {
     const burstIds = burst.dragAssetIdsForBurst(
@@ -666,7 +666,7 @@ export default function App() {
       if (action === "app:open-settings") setSettingsOpen(true);
       if (action === "gallery:find-similar") void startSimilarSession(workspace.selectedAssetId);
     });
-  }, [workspace.selectedAssetId]);
+  }, [workspace.selectedAssetId, startSimilarSession]);
 
   // First-run / no-catalog gate. info loads via refreshAll; until then info is
   // null (don't flash the welcome). In packaged mode a fresh install has no
@@ -1416,7 +1416,6 @@ export default function App() {
             }
           : selectByIndex
         }
-        assetDetail={workspace.detail}
         burstMembers={lightboxBurstMembers}
         burstKeeperId={burst.keeperId}
         onBurstFrameSelect={selectSingle}

@@ -734,6 +734,7 @@ export default function useWorkspace({ pushToast } = {}) {
       return;
     }
     void loadDetail(selectedAssetId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadDetail reads latest filters
   }, [selectedAssetId, filters?.person_group]);
 
   // Re-import reminder: when an import finishes, tell the user how many of the

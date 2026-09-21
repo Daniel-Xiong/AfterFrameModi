@@ -68,7 +68,6 @@ export default function Lightbox({
   onEdit,
   onClose,
   onIndexChange,
-  assetDetail = null,
   burstMembers = [],
   burstKeeperId = null,
   onBurstFrameSelect,
@@ -374,6 +373,89 @@ export default function Lightbox({
     return () => viewport.removeEventListener("wheel", handleWheel);
   }, [naturalSize, open]);
 
+  const burstIndex = Math.max(0, burstMembers.findIndex((m) => m.asset_id === currentItem?.asset_id));
+  const versionIndex = Math.max(0, versionItems.findIndex((m) => m.asset_id === currentItem?.asset_id));
+
+  useEffect(() => {
+    if (!open) setFilmstripMode("none");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleKey(event) {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key;
+      if (key === "Escape") {
+        if (filmstripMode !== "none") {
+          event.preventDefault();
+          event.stopPropagation();
+          setFilmstripMode("none");
+        }
+        return;
+      }
+      if (key.toLowerCase() === "b" && burstMembers.length > 1) {
+        event.preventDefault();
+        setFilmstripMode((mode) => (mode === "burst" ? "none" : "burst"));
+        return;
+      }
+      if (key.toLowerCase() === "v" && versionItems.length > 1) {
+        event.preventDefault();
+        setFilmstripMode((mode) => (mode === "version" ? "none" : "version"));
+        return;
+      }
+      if (key.toLowerCase() === "f" && burstMembers.length > 1 && filmstripMode === "burst") {
+        event.preventDefault();
+        onSetBurstCover?.(currentItem?.asset_id);
+        return;
+      }
+      const stepBurst = (dir) => {
+        if (!burstMembers.length) return;
+        const next = (burstIndex + dir + burstMembers.length) % burstMembers.length;
+        onBurstFrameSelect?.(burstMembers[next].asset_id);
+      };
+      const stepVersion = (dir) => {
+        if (!versionItems.length) return;
+        const next = (versionIndex + dir + versionItems.length) % versionItems.length;
+        onVersionSelect?.(versionItems[next].asset_id);
+      };
+      if (filmstripMode === "burst" && (key === "ArrowLeft" || key === "ArrowRight")) {
+        event.preventDefault();
+        event.stopPropagation();
+        stepBurst(key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+      if (filmstripMode === "version" && (key === "ArrowLeft" || key === "ArrowRight")) {
+        event.preventDefault();
+        event.stopPropagation();
+        stepVersion(key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+      if (key === "[" || key === "]") {
+        event.preventDefault();
+        stepVersion(key === "[" ? -1 : 1);
+        return;
+      }
+      if (key === "{" || key === "}") {
+        event.preventDefault();
+        stepBurst(key === "{" ? -1 : 1);
+        return;
+      }
+    }
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+  }, [
+    open,
+    filmstripMode,
+    burstMembers,
+    burstIndex,
+    versionItems,
+    versionIndex,
+    currentItem?.asset_id,
+    onBurstFrameSelect,
+    onVersionSelect,
+    onSetBurstCover,
+  ]);
+
   if (!open || !currentItem) return null;
 
   function handleImageLoad(event) {
@@ -527,89 +609,6 @@ export default function Lightbox({
     detailVisibleRef.current = false;
     event.currentTarget.style.visibility = "hidden";
   }
-
-  const burstIndex = Math.max(0, burstMembers.findIndex((m) => m.asset_id === currentItem?.asset_id));
-  const versionIndex = Math.max(0, versionItems.findIndex((m) => m.asset_id === currentItem?.asset_id));
-
-  useEffect(() => {
-    if (!open) setFilmstripMode("none");
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function handleKey(event) {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-      const key = event.key;
-      if (key === "Escape") {
-        if (filmstripMode !== "none") {
-          event.preventDefault();
-          event.stopPropagation();
-          setFilmstripMode("none");
-        }
-        return;
-      }
-      if (key.toLowerCase() === "b" && burstMembers.length > 1) {
-        event.preventDefault();
-        setFilmstripMode((mode) => (mode === "burst" ? "none" : "burst"));
-        return;
-      }
-      if (key.toLowerCase() === "v" && versionItems.length > 1) {
-        event.preventDefault();
-        setFilmstripMode((mode) => (mode === "version" ? "none" : "version"));
-        return;
-      }
-      if (key.toLowerCase() === "f" && burstMembers.length > 1 && filmstripMode === "burst") {
-        event.preventDefault();
-        onSetBurstCover?.(currentItem?.asset_id);
-        return;
-      }
-      const stepBurst = (dir) => {
-        if (!burstMembers.length) return;
-        const next = (burstIndex + dir + burstMembers.length) % burstMembers.length;
-        onBurstFrameSelect?.(burstMembers[next].asset_id);
-      };
-      const stepVersion = (dir) => {
-        if (!versionItems.length) return;
-        const next = (versionIndex + dir + versionItems.length) % versionItems.length;
-        onVersionSelect?.(versionItems[next].asset_id);
-      };
-      if (filmstripMode === "burst" && (key === "ArrowLeft" || key === "ArrowRight")) {
-        event.preventDefault();
-        event.stopPropagation();
-        stepBurst(key === "ArrowLeft" ? -1 : 1);
-        return;
-      }
-      if (filmstripMode === "version" && (key === "ArrowLeft" || key === "ArrowRight")) {
-        event.preventDefault();
-        event.stopPropagation();
-        stepVersion(key === "ArrowLeft" ? -1 : 1);
-        return;
-      }
-      if (key === "[" || key === "]") {
-        event.preventDefault();
-        stepVersion(key === "[" ? -1 : 1);
-        return;
-      }
-      if (key === "{" || key === "}") {
-        event.preventDefault();
-        stepBurst(key === "{" ? -1 : 1);
-        return;
-      }
-    }
-    window.addEventListener("keydown", handleKey, true);
-    return () => window.removeEventListener("keydown", handleKey, true);
-  }, [
-    open,
-    filmstripMode,
-    burstMembers,
-    burstIndex,
-    versionItems,
-    versionIndex,
-    currentItem?.asset_id,
-    onBurstFrameSelect,
-    onVersionSelect,
-    onSetBurstCover,
-  ]);
 
   return (
     <div
