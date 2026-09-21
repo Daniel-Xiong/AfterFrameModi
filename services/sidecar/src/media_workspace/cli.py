@@ -344,6 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
     detail_group = detail.add_mutually_exclusive_group(required=True)
     detail_group.add_argument("--asset-id")
     detail_group.add_argument("--image-path", type=Path)
+    detail.add_argument("--person-group", default=None, help="optional person filter for burst sibling highlight")
 
     subparsers.add_parser("list-pending", parents=[common])
 
@@ -1753,6 +1754,7 @@ def _cmd_asset_detail(args, connection, catalog, parser):
         payload["burst_is_keeper"] = bool(burst["is_keeper"]) if burst else None
         payload["burst_siblings"] = []
         if burst:
+            person_group = getattr(args, "person_group", None)
             payload["burst_siblings"] = [
                 {
                     "asset_id": s["asset_id"],
@@ -1760,8 +1762,30 @@ def _cmd_asset_detail(args, connection, catalog, parser):
                     "image_path": s["canonical_path"],
                     "is_keeper": bool(s["is_keeper"]),
                     "preview_path": _catalog_preview(catalog, s["preview_relative_path"]),
+                    "matches_active_filter": bool(s["matches_active_filter"]),
                 }
-                for s in list_burst_siblings(connection, str(burst["group_id"]), asset_id)
+                for s in list_burst_siblings(
+                    connection,
+                    str(burst["group_id"]),
+                    asset_id,
+                    person_group_id=person_group,
+                )
+            ]
+            payload["burst_all_members"] = [
+                {
+                    "asset_id": s["asset_id"],
+                    "stem": s["stem"],
+                    "image_path": s["canonical_path"],
+                    "is_keeper": bool(s["is_keeper"]),
+                    "preview_path": _catalog_preview(catalog, s["preview_relative_path"]),
+                    "matches_active_filter": bool(s["matches_active_filter"]),
+                }
+                for s in list_burst_siblings(
+                    connection,
+                    str(burst["group_id"]),
+                    None,
+                    person_group_id=person_group,
+                )
             ]
     else:
         payload["burst_group_id"] = None

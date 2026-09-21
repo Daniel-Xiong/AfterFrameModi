@@ -18,7 +18,9 @@ from media_workspace.db import (
     rebuild_capture_graph,
     set_burst_keeper,
     set_catalog_path,
+    summary,
 )
+from media_workspace.db.browse import count_gallery_photos
 from media_workspace.derived import create_derived_crop, register_image_file
 from media_workspace.metadata import stable_asset_id
 
@@ -123,6 +125,10 @@ class CaptureGraphTest(unittest.TestCase):
         self.assertEqual(roles[raw], "raw")
         visible = list_image_assets(self.connection, "all", representatives=True)
         self.assertEqual([row["asset_id"] for row in visible], [jpeg])
+        self.assertEqual(count_gallery_photos(self.connection, "all"), 1)
+        stats = summary(self.connection)
+        self.assertEqual(stats["photo_count"], 1)
+        self.assertGreaterEqual(stats["image_assets"], stats["photo_count"])
         hidden = list_image_assets(self.connection, "all", representatives=False)
         self.assertEqual({row["asset_id"] for row in hidden}, {jpeg, raw})
 

@@ -182,8 +182,9 @@ export function progressNote(task) {
 }
 
 export function navItems(summary) {
+  const photoCount = summary?.photo_count ?? summary?.image_assets ?? 0;
   const items = [
-    { key: "all", label: "All Assets", count: summary?.image_assets ?? 0, icon: "Archive" },
+    { key: "all", label: "All Assets", count: photoCount, icon: "Archive" },
     { key: "recent", label: "Recently Added", count: summary?.recently_added_count ?? 0, icon: "Clock" },
   ];
   if (Number(summary?.rated_count ?? 0) > 0) {

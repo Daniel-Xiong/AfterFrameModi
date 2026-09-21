@@ -293,6 +293,34 @@ AND (
     )
 )"""
 
+_REPRESENTATIVE_PREDICATE = """(
+    NOT EXISTS (SELECT 1 FROM capture_unit_members)
+    OR assets.asset_id IN (
+        SELECT cu.display_asset_id
+        FROM capture_units AS cu
+        WHERE NOT EXISTS (
+            SELECT 1 FROM burst_group_items AS bgi WHERE bgi.unit_id = cu.unit_id
+        )
+        UNION
+        SELECT bg.display_asset_id FROM burst_groups AS bg
+    )
+)"""
+
+
+def count_gallery_photos(connection: sqlite3.Connection, status: str = "all") -> int:
+    """Cards shown in the default gallery (capture representatives + burst covers)."""
+    status_clause = _status_clause(status)
+    row = connection.execute(
+        f"""
+        SELECT COUNT(DISTINCT assets.asset_id)
+        FROM image_lookup_registry AS registry
+        JOIN assets ON assets.asset_id = registry.image_asset_id
+        WHERE {status_clause}
+          AND {_REPRESENTATIVE_PREDICATE}
+        """,
+    ).fetchone()
+    return int(row[0] if row else 0)
+
 
 def _status_clause(status: str) -> str:
     """Status → WHERE clause on registry/assets. Shared between the gallery

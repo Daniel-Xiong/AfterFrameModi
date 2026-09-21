@@ -563,8 +563,25 @@ def get_capture_unit_for_asset(connection: sqlite3.Connection, asset_id: str) ->
     ).fetchone()
 
 
-def list_burst_siblings(connection: sqlite3.Connection, group_id: str, exclude_asset_id: str | None = None) -> list[sqlite3.Row]:
-    params: list[object] = [group_id]
+def list_burst_siblings(
+    connection: sqlite3.Connection,
+    group_id: str,
+    exclude_asset_id: str | None = None,
+    *,
+    person_group_id: str | None = None,
+) -> list[sqlite3.Row]:
+    params: list[object] = []
+    if person_group_id:
+        match_sql = """
+            , EXISTS (
+                SELECT 1 FROM asset_faces AS af
+                WHERE af.asset_id = cu.display_asset_id AND af.group_id = ?
+            ) AS matches_active_filter
+        """
+        params.append(person_group_id)
+    else:
+        match_sql = ", 1 AS matches_active_filter"
+    params.append(group_id)
     extra = ""
     if exclude_asset_id:
         extra = "AND cu.display_asset_id != ?"
@@ -580,6 +597,7 @@ def list_burst_siblings(connection: sqlite3.Connection, group_id: str, exclude_a
             assets.stem,
             assets.canonical_path,
             pe.relative_path AS preview_relative_path
+            {match_sql}
         FROM burst_group_items AS bgi
         JOIN capture_units AS cu ON cu.unit_id = bgi.unit_id
         JOIN assets ON assets.asset_id = cu.display_asset_id

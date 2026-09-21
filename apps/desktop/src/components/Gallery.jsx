@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import { LoaderCircle, Images, FolderPlus, FolderMinus, Folder, ChevronRight, Columns2, LayoutGrid, Eye, Pencil, Trash2, Trash, Sparkles, Unlink, Link2, Type, Play, ExternalLink, ScanFace, RefreshCw } from "lucide-react";
 
@@ -15,6 +15,7 @@ function formatDuration(seconds) {
 import { useTranslation } from "react-i18next";
 import { fileName, galleryInfoLabel, buildJustifiedLayout, localFileUrl } from "../utils/format";
 import PreviewImage from "./PreviewImage";
+import AssetFilmstrip from "./AssetFilmstrip";
 
 const GAP = 12;
 const TILE_GAP = 2;
@@ -175,7 +176,7 @@ function MenuItem({ icon: Icon, label, shortcut, onClick, children }) {
   );
 }
 
-function ContextMenu({ x, y, item, assetIds, collections, activeCollectionId, editors, onAddTo, onRemoveFrom, onReveal, onRefreshFromDisk, onEdit, onOpenWith, onDeleteFromCatalog, onDeleteFromDisk, onCopyPath, onCopyName, onCompare, onCollage, onAnnotate, onClose }) {
+function ContextMenu({ x, y, item, assetIds, collections, activeCollectionId, editors, onAddTo, onRemoveFrom, onReveal, onRefreshFromDisk, onEdit, onOpenWith, onDeleteFromCatalog, onDeleteFromDisk, onCopyPath, onCopyName, onCompare, onCollage, onAnnotate, onFindSimilar, onClose }) {
   const { t } = useTranslation("nav");
   const ref = useRef(null);
   useEffect(() => {
@@ -221,6 +222,13 @@ function ContextMenu({ x, y, item, assetIds, collections, activeCollectionId, ed
       style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
     >
       <MenuItem icon={Pencil} label={t("gallery.menu.edit")} shortcut="E" onClick={() => { onEdit?.(item.image_path); onClose(); }} />
+      {assetIds?.length === 1 && (
+        <MenuItem
+          icon={Sparkles}
+          label={t("gallery.menu.findSimilar")}
+          onClick={() => { onFindSimilar?.(assetIds[0]); onClose(); }}
+        />
+      )}
       {assetIds?.length === 2 && (
         <MenuItem icon={Columns2} label={t("gallery.menu.compare")} onClick={() => { onCompare?.(assetIds); onClose(); }} />
       )}
@@ -312,7 +320,10 @@ const CardContent = memo(function CardContent({
   compact = false,
   bustToken,
   onPreviewError,
-  showVersionBadge = false, // deprecated — kept for compat
+  burstExpanded = false,
+  onBurstBadgeClick,
+  onVersionBadgeClick,
+  onFocusVersions,
 }) {
   const { t } = useTranslation("nav");
   const title = fileName(item.image_path) || item.stem;
@@ -414,6 +425,7 @@ const CardContent = memo(function CardContent({
         className={[
           "relative overflow-hidden transition-all duration-200",
           compact ? "rounded-none" : "rounded-md",
+          item.burst_member_count > 1 ? "shadow-[2px_2px_0_0_rgba(0,0,0,0.35)]" : "",
           selected
             ? "ring-2 ring-accent shadow-glow"
             : "ring-1 ring-border/40 group-hover:ring-accent/40 group-hover:shadow-card-hover",
@@ -467,13 +479,35 @@ const CardContent = memo(function CardContent({
           </div>
         ) : null}
         {item.burst_member_count > 1 ? (
-          <div
-            className="pointer-events-none absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white"
+          <button
+            type="button"
+            className={[
+              "absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white",
+              burstExpanded ? "ring-1 ring-accent/80" : "hover:bg-black/85",
+            ].join(" ")}
             title={t("gallery.burstCount", { count: item.burst_member_count })}
+            onClick={(event) => {
+              event.stopPropagation();
+              onBurstBadgeClick?.(item.asset_id);
+            }}
           >
             <Images className="h-2.5 w-2.5" />
-            {item.burst_member_count}
-          </div>
+            {t("gallery.burstLabel", { count: item.burst_member_count })}
+          </button>
+        ) : null}
+        {Number(item.set_item_count) > 1 ? (
+          <button
+            type="button"
+            className="absolute bottom-1.5 right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded bg-black/70 px-1 text-[10px] font-semibold tabular-nums text-white hover:bg-black/85"
+            title={t("gallery.versionCount", { count: item.set_item_count })}
+            onClick={(event) => {
+              event.stopPropagation();
+              onVersionBadgeClick?.(item.asset_id);
+              onFocusVersions?.();
+            }}
+          >
+            {item.set_item_count}
+          </button>
         ) : null}
       </div>
       {captionHeight > 0 ? (
@@ -530,6 +564,18 @@ export default function Gallery({
   onCompare,
   onCollage,
   onAnnotate,
+  onFindSimilar,
+  burstExpandedCoverId,
+  onBurstBadgeClick,
+  onBurstFrameSelect,
+  burstMembers,
+  burstFrameId,
+  burstSelectedIds,
+  burstKeeperId,
+  dimBurstUnmatched,
+  onSetBurstCover,
+  onFocusVersions,
+  onVersionBadgeClick,
 }) {
   const { t } = useTranslation("nav");
   const containerRef = useRef(null);
@@ -847,6 +893,41 @@ export default function Gallery({
 
   const fit = displayMode === "justified" ? "contain" : "cover";
 
+  const [burstPanelRect, setBurstPanelRect] = useState(null);
+  useLayoutEffect(() => {
+    if (!burstExpandedCoverId || !containerRef.current) {
+      setBurstPanelRect(null);
+      return undefined;
+    }
+    const update = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const escaped = typeof CSS !== "undefined" && CSS.escape
+        ? CSS.escape(burstExpandedCoverId)
+        : burstExpandedCoverId;
+      const card = container.querySelector(`[data-asset-id="${escaped}"]`);
+      if (!card) {
+        setBurstPanelRect(null);
+        return;
+      }
+      const containerRect = container.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      setBurstPanelRect({
+        left: cardRect.left - containerRect.left + container.scrollLeft,
+        top: cardRect.bottom - containerRect.top + container.scrollTop + 4,
+        width: Math.max(cardRect.width, 280),
+      });
+    };
+    update();
+    const container = containerRef.current;
+    container?.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      container?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [burstExpandedCoverId, visibleItems, scrollTop, containerWidth]);
+
   function getContentPoint(clientX, clientY) {
     const container = containerRef.current;
     if (!container) return { x: 0, y: 0 };
@@ -981,10 +1062,47 @@ export default function Gallery({
                 compact={isTileMode}
                 bustToken={previewBust[item.asset_id]}
                 onPreviewError={stableOnPreviewError}
+                burstExpanded={burstExpandedCoverId === item.asset_id}
+                onBurstBadgeClick={onBurstBadgeClick}
+                onVersionBadgeClick={onVersionBadgeClick}
+                onFocusVersions={onFocusVersions}
               />
             </div>
           );
         })}
+        {burstPanelRect && burstExpandedCoverId && burstMembers?.length > 0 ? (
+          <div
+            className="absolute z-20 rounded-lg border border-border/60 bg-chrome/95 p-2 shadow-card-hover backdrop-blur-sm"
+            style={{
+              left: `${burstPanelRect.left}px`,
+              top: `${burstPanelRect.top}px`,
+              width: `${Math.min(burstPanelRect.width, containerWidth - 16)}px`,
+            }}
+            data-burst-filmstrip="true"
+          >
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted2">
+                {t("gallery.burstFilmstripTitle", { count: burstMembers.length })}
+              </span>
+              <button
+                type="button"
+                className="text-[10px] text-accent hover:underline"
+                onClick={() => onSetBurstCover?.(burstFrameId || burstKeeperId)}
+              >
+                {t("gallery.setBurstCover")} (F)
+              </button>
+            </div>
+            <AssetFilmstrip
+              items={burstMembers}
+              selectedId={burstFrameId}
+              selectedIds={burstSelectedIds}
+              keeperId={burstKeeperId}
+              showKeeperBadge
+              dimUnmatched={dimBurstUnmatched}
+              onSelect={onBurstFrameSelect}
+            />
+          </div>
+        ) : null}
         {marquee && marquee.moved && (
           <div
             className="pointer-events-none absolute z-30 rounded-sm border border-accent/60 bg-accent/10"
@@ -1019,6 +1137,7 @@ export default function Gallery({
           onCompare={onCompare}
           onCollage={onCollage}
           onAnnotate={(ids, opts) => onAnnotate?.(ids, opts)}
+          onFindSimilar={onFindSimilar}
           onClose={closeContextMenu}
         />
       )}

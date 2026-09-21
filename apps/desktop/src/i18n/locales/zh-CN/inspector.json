@@ -14,6 +14,7 @@
     "duplicates": "重复项",
     "sourceImages": "源图像",
     "otherVersions": "其他版本",
+    "versions": "版本",
     "captureUnit": "拍摄单元",
     "burst": "连拍",
     "similar": "相似",
@@ -96,6 +97,11 @@
     "clearSelection": "取消选择",
     "removedCount_other": "已移出 {{count}} 张脸",
     "showMoreFaces_other": "加载更多（还有 {{count}} 张脸）"
+  },
+  "versions": {
+    "cannotDeletePrimary": "主版本不能从这里删除。",
+    "deleteConfirm": "从图库移出这一版本？",
+    "deleteFailed": "无法删除版本"
   },
   "locationSource": {
     "exif": "GPS (EXIF)",

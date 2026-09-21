@@ -32,6 +32,8 @@ import ToastStack, { useToasts } from "./components/Toast";
 import { ConfirmHost, confirm } from "./components/confirm";
 import useAnnotationJob from "./components/annotation/useAnnotationJob";
 import { invalidateAnnotations } from "./components/annotation/annotationStore";
+import useBurstGallery from "./hooks/useBurstGallery";
+import SimilarSessionBanner from "./components/SimilarSessionBanner";
 
 const MAP_EXPANDED_KEY = "afterframe-map-expanded";
 const MAP_HEIGHT_KEY = "afterframe-map-height";
@@ -301,6 +303,87 @@ export default function App() {
     setPrimaryId: workspace.setSelectedAssetId,
   });
   const selectedAssetIds = selectedIds;
+
+  const burst = useBurstGallery({
+    detail: workspace.detail,
+    coverAssetId: workspace.selectedAssetId,
+    personGroupId: workspace.filters?.person_group,
+    onSelectAsset: selectSingle,
+    pushToast,
+    refreshGraph: () => workspace.refreshAll({ force: true }),
+    t: tNav,
+  });
+
+  const [similarSession, setSimilarSession] = useState(null);
+  const [similarBusy, setSimilarBusy] = useState(false);
+  const [similarChecked, setSimilarChecked] = useState({});
+
+  const startSimilarSession = async (seedAssetId) => {
+    setSimilarBusy(true);
+    try {
+      pushToast?.({ title: tNav("similar.scanning"), ttl: 3000 });
+      const clusters = await api.listSimilarClusters();
+      const list = Array.isArray(clusters) ? clusters : [];
+      const filtered = seedAssetId
+        ? list.filter((c) => (c.asset_ids || []).includes(seedAssetId))
+        : list;
+      const initialChecked = {};
+      for (const cluster of filtered) {
+        const key = cluster.cluster_id || (cluster.asset_ids || []).join(",");
+        const keeper = cluster.asset_ids?.[0];
+        const checked = new Set();
+        for (const id of cluster.asset_ids || []) {
+          if (id !== keeper) checked.add(id);
+        }
+        initialChecked[key] = checked;
+      }
+      setSimilarChecked(initialChecked);
+      setSimilarSession({ clusters: filtered });
+    } catch (err) {
+      pushToast?.({ title: tNav("similar.scanFailed"), message: err?.message || String(err), tone: "error", ttl: 6000 });
+    } finally {
+      setSimilarBusy(false);
+    }
+  };
+
+  const prepareDragSelectionBurst = (assetId, event) => {
+    const burstIds = burst.dragAssetIdsForBurst(
+      itemById.get(assetId)?.burst_member_count > 1 ? assetId : burst.expandedCoverId,
+      event?.altKey,
+    );
+    if (burstIds?.length) {
+      const paths = burstIds.map((id) => {
+        const fromGrid = itemById.get(id)?.image_path;
+        if (fromGrid) return fromGrid;
+        const member = burst.burstMembers.find((m) => m.asset_id === id);
+        return member?.image_path;
+      }).filter(Boolean);
+      return { assetIds: burstIds, imagePaths: paths };
+    }
+    return prepareDragSelection(assetId);
+  };
+
+  const burstRejectOthers = async () => {
+    if (!burst.expandedCoverId || !burst.burstMembers.length) return;
+    const keeper = burst.keeperId;
+    const keepSelected = burst.burstSelectedIds.size
+      ? burst.burstSelectedIds
+      : new Set([burst.burstFrameId, keeper].filter(Boolean));
+    const toRemove = burst.burstMembers
+      .map((m) => m.asset_id)
+      .filter((id) => id !== keeper && !keepSelected.has(id));
+    if (!toRemove.length) return;
+    const ok = await confirm({
+      title: tNav("gallery.burstRejectTitle"),
+      message: tNav("gallery.burstRejectMsg", { count: toRemove.length }),
+      confirmLabel: t("remove"),
+      cancelLabel: t("cancel"),
+      danger: true,
+    });
+    if (!ok) return;
+    await workspace.deleteImageAssets(toRemove);
+    burst.collapseBurst();
+  };
 
   const [dropActive, setDropActive] = useState(false);
   const { annotate: runAnnotation } = useAnnotationJob(pushToast, workspace.pokeJobs);
@@ -581,8 +664,9 @@ export default function App() {
     if (!api.has("onMenuAction")) return undefined;
     return api.onMenuAction((action) => {
       if (action === "app:open-settings") setSettingsOpen(true);
+      if (action === "gallery:find-similar") void startSimilarSession(workspace.selectedAssetId);
     });
-  }, []);
+  }, [workspace.selectedAssetId]);
 
   // First-run / no-catalog gate. info loads via refreshAll; until then info is
   // null (don't flash the welcome). In packaged mode a fresh install has no
@@ -732,6 +816,19 @@ export default function App() {
   }
 
 
+  const lightboxBurstMembers = useMemo(() => workspace.detail?.burst_all_members || [], [workspace.detail]);
+  const lightboxVersionItems = useMemo(() => {
+    if (!workspace.detail) return [];
+    return [
+      {
+        asset_id: workspace.detail.asset_id,
+        stem: workspace.detail.stem,
+        preview_path: workspace.detail.image_preview_path,
+      },
+      ...(workspace.detail.version_siblings || []),
+    ];
+  }, [workspace.detail]);
+
   function openEditor(target) {
     const nextItem =
       typeof target === "string"
@@ -812,6 +909,35 @@ export default function App() {
       if (editorItem || viewMode === "people") return;
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       if (shouldIgnoreKey(event)) return;
+
+      if (viewMode === "assets" && event.key.toLowerCase() === "b" && !lightboxOpen) {
+        const cover = workspace.selectedAssetId;
+        const item = itemById.get(cover);
+        if (item?.burst_member_count > 1) {
+          event.preventDefault();
+          burst.toggleExpand(cover);
+        }
+        return;
+      }
+
+      if (viewMode === "assets" && event.key.toLowerCase() === "f" && !lightboxOpen && burst.expandedCoverId) {
+        event.preventDefault();
+        void burst.setBurstCover(burst.burstFrameId || workspace.selectedAssetId);
+        return;
+      }
+
+      if (viewMode === "assets" && event.key.toLowerCase() === "x" && !lightboxOpen) {
+        if (event.shiftKey && burst.expandedCoverId) {
+          event.preventDefault();
+          void burstRejectOthers();
+          return;
+        }
+        if (burst.expandedCoverId && burst.burstFrameId) {
+          event.preventDefault();
+          void deleteAssets([burst.burstFrameId]);
+          return;
+        }
+      }
 
       // Delete / Backspace removes the selected assets (with confirmation).
       // Skipped in stickers view, which has its own deletion path.
@@ -1055,6 +1181,51 @@ export default function App() {
                 onPauseJob={workspace.pauseJob}
                 onResumeJob={workspace.resumeJob}
               />
+              {similarSession?.clusters?.length ? (
+                <SimilarSessionBanner
+                  clusters={similarSession.clusters}
+                  itemsById={itemById}
+                  keeperIds={new Set(currentItems.filter((i) => i.burst_is_keeper).map((i) => i.asset_id))}
+                  checkedByCluster={similarChecked}
+                  onToggleChecked={(key, assetId) => {
+                    setSimilarChecked((prev) => {
+                      const next = { ...prev };
+                      const set = new Set(next[key] || []);
+                      if (set.has(assetId)) set.delete(assetId);
+                      else set.add(assetId);
+                      next[key] = set;
+                      return next;
+                    });
+                  }}
+                  onClose={() => {
+                    setSimilarSession(null);
+                    setSimilarChecked({});
+                  }}
+                  onKeepAll={() => {
+                    setSimilarSession(null);
+                    setSimilarChecked({});
+                  }}
+                  busy={similarBusy}
+                  onRemoveChecked={async () => {
+                    const ids = [];
+                    for (const cluster of similarSession.clusters) {
+                      const key = cluster.cluster_id || (cluster.asset_ids || []).join(",");
+                      const set = similarChecked[key];
+                      if (set) ids.push(...set);
+                    }
+                    const unique = [...new Set(ids)];
+                    if (!unique.length) return;
+                    setSimilarBusy(true);
+                    try {
+                      await workspace.deleteImageAssets(unique);
+                      setSimilarSession(null);
+                      setSimilarChecked({});
+                    } finally {
+                      setSimilarBusy(false);
+                    }
+                  }}
+                />
+              ) : null}
               {showFilters && (
                 <FilterBar
                   facetValues={workspace.facetValues}
@@ -1124,7 +1295,19 @@ export default function App() {
                   onLoadMore={workspace.loadMoreBrowser}
                   displayMode={displayMode}
                   thumbSize={thumbSize}
-                  totalCount={Number(workspace.summary?.image_assets ?? 0)}
+                  totalCount={Number(workspace.summary?.photo_count ?? workspace.summary?.image_assets ?? 0)}
+                  burstExpandedCoverId={burst.expandedCoverId}
+                  onBurstBadgeClick={burst.toggleExpand}
+                  onBurstFrameSelect={burst.selectBurstFrame}
+                  burstMembers={burst.burstMembers}
+                  burstFrameId={burst.burstFrameId}
+                  burstSelectedIds={burst.burstSelectedIds}
+                  burstKeeperId={burst.keeperId}
+                  dimBurstUnmatched={!!workspace.filters?.person_group}
+                  onSetBurstCover={(assetId) => burst.setBurstCover(assetId || burst.burstFrameId)}
+                  onFindSimilar={(assetId) => void startSimilarSession(assetId)}
+                  onVersionBadgeClick={selectSingle}
+                  onPrepareDragSelection={prepareDragSelectionBurst}
                   collections={workspace.collections}
                   activeCollectionId={workspace.activeCollectionId}
                   onAddToCollection={workspace.addToCollection}
@@ -1233,6 +1416,13 @@ export default function App() {
             }
           : selectByIndex
         }
+        assetDetail={workspace.detail}
+        burstMembers={lightboxBurstMembers}
+        burstKeeperId={burst.keeperId}
+        onBurstFrameSelect={selectSingle}
+        onSetBurstCover={(assetId) => burst.setBurstCover(assetId)}
+        versionItems={lightboxVersionItems}
+        onVersionSelect={selectSingle}
       />
       <SettingsOverlay
         open={settingsOpen}
@@ -1253,18 +1443,16 @@ export default function App() {
           // preserveView keeps the user's selection and scroll depth; without it
           // the refresh only refetches page 1 and selection jumps to the first asset.
           await workspace.refreshAll?.({ force: true, preserveView: true });
-          if (savePath) {
-            pushToast({
-              title: t("saved"),
-              message: savePath,
-              ttl: 20_000,
-              actions: [{
-                label: t("showInFinder"),
-                primary: true,
-                onClick: () => api.revealPath(savePath),
-              }],
-            });
-          }
+          pushToast({
+            title: t("savedNewVersion"),
+            message: savePath || t("savedNewVersionMsg"),
+            ttl: savePath ? 20_000 : 5000,
+            actions: savePath ? [{
+              label: t("showInFinder"),
+              primary: true,
+              onClick: () => api.revealPath(savePath),
+            }] : undefined,
+          });
         }}
       />
       {compareState && (

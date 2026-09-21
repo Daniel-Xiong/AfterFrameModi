@@ -395,7 +395,11 @@ def delete_image_asset_from_catalog(
 
 
 def summary(connection: sqlite3.Connection) -> dict[str, int]:
+    from .browse import count_gallery_photos
+
+    photo_count = count_gallery_photos(connection, "all")
     return {
+        "photo_count": photo_count,
         "assets": connection.execute(
             """
             SELECT COUNT(DISTINCT asset_files.asset_id)

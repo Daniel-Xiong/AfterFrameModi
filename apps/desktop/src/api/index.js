@@ -148,6 +148,7 @@ const api = {
   peopleGroupDetail: (...args) => invoke("peopleGroupDetail", ...args),
   similarPeopleGroups: (...args) => invoke("similarPeopleGroups", ...args),
   setBurstKeeper: (...args) => invoke("setBurstKeeper", ...args),
+  listSimilarClusters: (...args) => invoke("listSimilarClusters", ...args),
   renamePeopleGroup: (...args) => invoke("renamePeopleGroup", ...args),
   setPeopleGroupCover: (...args) => invoke("setPeopleGroupCover", ...args),
   setPeopleGroupState: (...args) => invoke("setPeopleGroupState", ...args),

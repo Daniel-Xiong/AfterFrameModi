@@ -25,6 +25,8 @@
   "noCatalogMsg": "导入前请先新建或打开一个图库。",
   "dismiss": "关闭",
   "showInFinder": "在访达中显示",
+  "savedNewVersion": "已保存为新版本",
+  "savedNewVersionMsg": "图库预览已切换到新编辑。",
   "annotationComplete": "标注完成",
   "annotationCompleteMsg": "已标注 {{count}} 个。",
   "annotationCompleteWithFailed": "已标注 {{count}} 个,{{failed}} 个失败。",

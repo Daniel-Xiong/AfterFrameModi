@@ -199,7 +199,9 @@ export default function useWorkspace({ pushToast } = {}) {
       setDetail(null);
       return;
     }
-    const payload = await api.getAssetDetailById(assetId);
+    const payload = await api.getAssetDetailById(assetId, {
+      personGroup: filters?.person_group || undefined,
+    });
     setDetail(payload);
   }
 
@@ -732,7 +734,7 @@ export default function useWorkspace({ pushToast } = {}) {
       return;
     }
     void loadDetail(selectedAssetId);
-  }, [selectedAssetId]);
+  }, [selectedAssetId, filters?.person_group]);
 
   // Re-import reminder: when an import finishes, tell the user how many of the
   // selected files were already in the catalog (re-importing the same folder).

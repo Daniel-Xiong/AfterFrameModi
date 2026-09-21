@@ -14,6 +14,7 @@
     "duplicates": "Duplicates",
     "sourceImages": "Source Images",
     "otherVersions": "Other Versions",
+    "versions": "Versions",
     "captureUnit": "Capture",
     "burst": "Burst",
     "similar": "Similar",
@@ -101,6 +102,11 @@
     "removedCount_other": "Removed {{count}} faces",
     "showMoreFaces_one": "Show more ({{count}} more face)",
     "showMoreFaces_other": "Show more ({{count}} more faces)"
+  },
+  "versions": {
+    "cannotDeletePrimary": "The primary version cannot be deleted here.",
+    "deleteConfirm": "Remove this version from the catalog?",
+    "deleteFailed": "Could not delete version"
   },
   "locationSource": {
     "exif": "GPS (EXIF)",
