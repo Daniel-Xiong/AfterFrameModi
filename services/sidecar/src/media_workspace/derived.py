@@ -27,6 +27,7 @@ from .db import (
     upsert_image_asset,
     upsert_preview_entry,
     upsert_registry,
+    rebuild_capture_graph,
 )
 from .metadata import extract_image_candidate
 from .models import MatchDecision
@@ -213,6 +214,8 @@ def register_image_file(
                 (str(uuid4()), asset_id, source_id, json.dumps({"sort_order": idx})),
             )
         connection.commit()
+
+    rebuild_capture_graph(connection, commit=True)
 
     return {
         "asset_id": asset_id,

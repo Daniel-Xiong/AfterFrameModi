@@ -155,6 +155,13 @@ class SchemaMigrationTest(unittest.TestCase):
         self.assertEqual(root_type, "image")
         self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
         self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        self.assertIsNotNone(connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='capture_units'"
+        ).fetchone())
+        self.assertGreaterEqual(
+            connection.execute("SELECT COUNT(*) FROM capture_units").fetchone()[0],
+            1,
+        )
 
     def test_repeated_init_is_idempotent(self) -> None:
         connection = create_v5_catalog()

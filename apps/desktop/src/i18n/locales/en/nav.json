@@ -60,6 +60,10 @@
     "noAssets": "No indexed assets yet",
     "assetsCount_one": "{{count}} asset",
     "assetsCount_other": "{{count}} assets",
+    "photosCount_one": "{{count}} photo",
+    "photosCount_other": "{{count}} photos",
+    "filesCount_one": "{{count}} file",
+    "filesCount_other": "{{count}} files",
     "updated": "updated {{time}}"
   },
   "people": {
@@ -182,7 +186,9 @@
     "resetToFit": "Reset to fit",
     "failedToLoad": "Failed to load image",
     "loadingLarge": "Loading large image...",
-    "preparingVideo": "Preparing video…"
+    "preparingVideo": "Preparing video…",
+    "burst": "Burst {{index}}/{{count}}",
+    "versions": "Versions {{index}}/{{count}}"
   },
   "gallery": {
     "loading": "Loading…",
@@ -191,7 +197,18 @@
     "missing": "Missing",
     "missingTip": "Original file moved or deleted",
     "hasPerson": "Contains a detected face",
+    "burstCount": "{{count}} burst shots",
+    "burstLabel": "Burst · {{count}}",
+    "burstCover": "Cover",
+    "burstFilmstripTitle": "Burst · {{count}}",
+    "setBurstCover": "Set cover",
+    "versionCount": "{{count}} versions",
+    "burstCoverUpdated": "Burst cover updated",
+    "burstCoverFailed": "Could not set burst cover",
+    "burstRejectTitle": "Remove burst shots?",
+    "burstRejectMsg": "Remove {{count}} photos from the catalog (keeper and selection stay).",
     "menu": {
+      "findSimilar": "Find Similar Photos",
       "edit": "Edit…",
       "compare": "Compare",
       "collage": "Collage",
@@ -219,5 +236,14 @@
       "city": "City"
     },
     "noLocation": "No mappable location for this photo"
+  },
+  "similar": {
+    "scanning": "Scanning for similar photos…",
+    "scanFailed": "Similar scan failed",
+    "sessionTitle": "{{count}} similar groups",
+    "sessionHint": "Review suggestions, then remove checked items from the catalog.",
+    "removeChecked": "Remove checked ({{count}})",
+    "keepAll": "Keep all",
+    "close": "Close session"
   }
 }

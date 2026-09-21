@@ -14,6 +14,10 @@
     "duplicates": "Duplicates",
     "sourceImages": "Source Images",
     "otherVersions": "Other Versions",
+    "versions": "Versions",
+    "captureUnit": "Capture",
+    "burst": "Burst",
+    "similar": "Similar",
     "people": "People"
   },
   "rows": {
@@ -25,6 +29,7 @@
     "type": "Type",
     "asset": "Asset",
     "rawSource": "RAW Source",
+    "sidecar": "Sidecar",
     "lastEditedBy": "Last edited by",
     "camera": "Camera",
     "lens": "Lens",
@@ -60,6 +65,9 @@
     "removed": "Removed — it won’t be matched back automatically",
     "reassigned": "Moved to “{{name}}”",
     "correctionFailed": "Couldn’t apply the correction",
+    "setBurstCover": "Show this as the burst cover",
+    "burstCoverUpdated": "Burst cover updated",
+    "burstCoverFailed": "Couldn’t set burst cover",
     "setCover": "Set as cover photo",
     "coverCurrent": "Current cover photo",
     "coverUpdated": "Person cover updated",
@@ -94,6 +102,11 @@
     "removedCount_other": "Removed {{count}} faces",
     "showMoreFaces_one": "Show more ({{count}} more face)",
     "showMoreFaces_other": "Show more ({{count}} more faces)"
+  },
+  "versions": {
+    "cannotDeletePrimary": "The primary version cannot be deleted here.",
+    "deleteConfirm": "Remove this version from the catalog?",
+    "deleteFailed": "Could not delete version"
   },
   "locationSource": {
     "exif": "GPS (EXIF)",

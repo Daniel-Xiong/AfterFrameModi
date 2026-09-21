@@ -63,7 +63,7 @@ function formatGPS(lat, lon) {
   return `${Math.abs(lat).toFixed(4)}° ${latDir}, ${Math.abs(lon).toFixed(4)}° ${lonDir}`;
 }
 
-function ThumbnailStrip({ items, icon: Icon, onSelect }) {
+function ThumbnailStrip({ items, icon: Icon, onSelect, dimUnmatched = false, onContextMenu }) {
   if (!items?.length) return null;
   return (
     <div className="mt-1.5 flex flex-wrap gap-1">
@@ -71,8 +71,12 @@ function ThumbnailStrip({ items, icon: Icon, onSelect }) {
         <button
           key={item.asset_id}
           type="button"
-          className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-black transition-all hover:ring-2 hover:ring-accent/50"
+          className={[
+            "group relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-black transition-all hover:ring-2 hover:ring-accent/50",
+            dimUnmatched && item.matches_active_filter === false ? "opacity-45" : "",
+          ].join(" ")}
           onClick={() => onSelect?.(item.asset_id)}
+          onContextMenu={(event) => onContextMenu?.(event, item)}
           title={item.stem}
         >
           {item.preview_path ? (
@@ -91,7 +95,7 @@ function ThumbnailStrip({ items, icon: Icon, onSelect }) {
   );
 }
 
-export default function Inspector({ detail, onRatingChange, onSelectAsset, onTagFilter, onRelinked, onOpenPersonGroup, onPeopleChanged, onJumpToLocation, onLocationChanged, pushToast }) {
+export default function Inspector({ detail, onRatingChange, onSelectAsset, onTagFilter, onRelinked, onOpenPersonGroup, onPeopleChanged, onJumpToLocation, onLocationChanged, onGraphChanged, pushToast }) {
   const { t } = useTranslation("inspector");
   const [localRating, setLocalRating] = useState(null);
   const [relinking, setRelinking] = useState(false);
@@ -236,6 +240,80 @@ export default function Inspector({ detail, onRatingChange, onSelectAsset, onTag
           </span>
         </div>
 
+        {(detail.version_siblings?.length > 0 || detail.set_item_count > 1) ? (
+          <div className="mb-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted2">{t("sections.versions")}</div>
+            <ThumbnailStrip
+              items={[
+                {
+                  asset_id: detail.asset_id,
+                  stem: detail.stem,
+                  preview_path: detail.image_preview_path,
+                  version_kind: detail.version_kind,
+                  is_current: true,
+                },
+                ...(detail.version_siblings || []),
+              ]}
+              onSelect={onSelectAsset}
+              onContextMenu={(event, item) => {
+                event.preventDefault();
+                if (item.asset_id === detail.set_primary_asset_id) {
+                  pushToast?.({ title: t("versions.cannotDeletePrimary"), ttl: 4000 });
+                  return;
+                }
+                if (!window.confirm(t("versions.deleteConfirm"))) return;
+                void window.mediaWorkspace?.deleteImageAssets?.([item.asset_id])
+                  .then(() => onGraphChanged?.())
+                  .catch((err) => {
+                    pushToast?.({ title: t("versions.deleteFailed"), message: err?.message || String(err), tone: "error", ttl: 5000 });
+                  });
+              }}
+            />
+          </div>
+        ) : null}
+
+        {detail.burst_siblings?.length > 0 ? (
+          <div className="mb-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted2">{t("sections.burst")}</div>
+              {detail.burst_group_id && !detail.burst_is_keeper ? (
+                <button
+                  type="button"
+                  className="text-[10px] text-accent hover:underline"
+                  onClick={() => {
+                    Promise.resolve(window.mediaWorkspace?.setBurstKeeper?.({
+                      groupId: detail.burst_group_id,
+                      assetId: detail.asset_id,
+                    }))
+                      .then(() => {
+                        pushToast?.({ title: t("people.burstCoverUpdated"), ttl: 2500 });
+                        onGraphChanged?.();
+                      })
+                      .catch((err) => {
+                        pushToast?.({ title: t("people.burstCoverFailed"), message: err?.message || String(err), ttl: 5000, tone: "error" });
+                      });
+                  }}
+                >
+                  {t("people.setBurstCover")}
+                </button>
+              ) : null}
+            </div>
+            <ThumbnailStrip
+              items={detail.burst_all_members || [
+                {
+                  asset_id: detail.asset_id,
+                  stem: detail.stem,
+                  preview_path: detail.image_preview_path,
+                  is_keeper: detail.burst_is_keeper,
+                },
+                ...(detail.burst_siblings || []),
+              ]}
+              dimUnmatched={!!detail.burst_siblings?.some((s) => s.matches_active_filter === false)}
+              onSelect={onSelectAsset}
+            />
+          </div>
+        ) : null}
+
         <div className="px-0.5">
           <h2 className="text-[13px] font-medium leading-tight text-text">{imageName || detail.stem}</h2>
 
@@ -264,13 +342,6 @@ export default function Inspector({ detail, onRatingChange, onSelectAsset, onTag
             <div className="mt-2">
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted2">{t("sections.sourceImages")}</div>
               <ThumbnailStrip items={detail.collage_sources} onSelect={onSelectAsset} />
-            </div>
-          ) : null}
-
-          {detail.version_siblings?.length > 0 ? (
-            <div className="mt-2">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted2">{t("sections.otherVersions")}</div>
-              <ThumbnailStrip items={detail.version_siblings} onSelect={onSelectAsset} />
             </div>
           ) : null}
 
@@ -379,6 +450,18 @@ export default function Inspector({ detail, onRatingChange, onSelectAsset, onTag
                 </button>
               ) : t("notLinked")}
             </DetailRow>
+            {(detail.capture_sidecars || []).map((path) => (
+              <DetailRow key={path} label={t("rows.sidecar")}>
+                <button
+                  type="button"
+                  className="max-w-full cursor-pointer break-all text-right text-accent underline decoration-accent/30 underline-offset-2 transition-colors hover:text-accent hover:decoration-accent/60"
+                  onClick={() => void window.mediaWorkspace?.revealPath?.(path)}
+                  title={t("reveal")}
+                >
+                  {escapePathLabel(path)}
+                </button>
+              </DetailRow>
+            ))}
             {imageMeta.software ? <DetailRow label={t("rows.lastEditedBy")}>{imageMeta.software}</DetailRow> : null}
           </Section>
 
@@ -420,12 +503,12 @@ export default function Inspector({ detail, onRatingChange, onSelectAsset, onTag
             </Section>
           ) : null}
 
-          {detail.duplicates?.length > 0 ? (
-            <Section title={t("sections.duplicates")}>
+          {detail.duplicates?.length > 0 || detail.similar_cluster?.asset_ids?.length > 1 ? (
+            <Section title={detail.similar_cluster ? t("sections.similar") : t("sections.duplicates")}>
               <div className="mt-1 space-y-1.5">
-                {detail.duplicates.map((dup) => (
+                {(detail.duplicates || []).map((dup) => (
                   <button
-                    key={dup.asset_id}
+                    key={`dup-${dup.asset_id}`}
                     type="button"
                     className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover"
                     onClick={() => void window.mediaWorkspace?.revealPath?.(dup.image_path)}
@@ -438,6 +521,22 @@ export default function Inspector({ detail, onRatingChange, onSelectAsset, onTag
                     </div>
                   </button>
                 ))}
+                {(detail.similar_cluster?.asset_ids || [])
+                  .map((id, index) => ({ id, stem: detail.similar_cluster.stems?.[index] }))
+                  .filter((item) => item.id && item.id !== detail.asset_id)
+                  .map((item) => (
+                    <button
+                      key={`sim-${item.id}`}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-hover"
+                      onClick={() => onSelectAsset?.(item.id)}
+                    >
+                      <Copy className="h-3 w-3 shrink-0 text-muted2" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12px] text-text">{item.stem || item.id}</div>
+                      </div>
+                    </button>
+                  ))}
               </div>
             </Section>
           ) : null}

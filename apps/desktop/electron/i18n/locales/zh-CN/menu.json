@@ -31,6 +31,8 @@
   "runEnrichment": "运行元数据补全",
   "generatePreviews": "生成预览",
   "verifyFiles": "校验文件",
+  "gallery": "图库",
+  "findSimilar": "查找相似照片",
   "view": "视图",
   "refresh": "刷新",
   "toggleTheme": "切换主题",

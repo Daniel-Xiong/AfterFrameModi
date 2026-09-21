@@ -25,6 +25,8 @@
   "noCatalogMsg": "Create or open a catalog before importing.",
   "dismiss": "Dismiss",
   "showInFinder": "Show in Finder",
+  "savedNewVersion": "Saved as new version",
+  "savedNewVersionMsg": "Gallery preview switched to the new edit.",
   "annotationComplete": "Annotation complete",
   "annotationCompleteMsg": "{{count}} annotated.",
   "annotationCompleteWithFailed": "{{count}} annotated, {{failed}} failed.",

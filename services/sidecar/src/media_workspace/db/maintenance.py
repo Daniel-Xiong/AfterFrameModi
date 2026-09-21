@@ -321,6 +321,9 @@ def delete_image_asset_from_catalog(
         deleted_preview_paths.append(str(preview_path))
     connection.execute("DELETE FROM preview_entries WHERE asset_id = ?", (asset_id,))
 
+    from .capture_graph import detach_asset_from_capture_graph, rebuild_capture_graph
+    detach_asset_from_capture_graph(connection, asset_id)
+
     set_row = get_resource_set_for_asset(connection, asset_id)
     if set_row is not None:
         set_id = str(set_row["set_id"])
@@ -379,6 +382,8 @@ def delete_image_asset_from_catalog(
     delete_asset_location(connection, asset_id)
     connection.execute("DELETE FROM assets WHERE asset_id = ?", (asset_id,))
 
+    rebuild_capture_graph(connection, commit=False)
+
     if commit:
         connection.commit()
 
@@ -390,7 +395,11 @@ def delete_image_asset_from_catalog(
 
 
 def summary(connection: sqlite3.Connection) -> dict[str, int]:
+    from .browse import count_gallery_photos
+
+    photo_count = count_gallery_photos(connection, "all")
     return {
+        "photo_count": photo_count,
         "assets": connection.execute(
             """
             SELECT COUNT(DISTINCT asset_files.asset_id)

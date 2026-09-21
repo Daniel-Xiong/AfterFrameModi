@@ -59,6 +59,8 @@
     "noCatalogHint": "新建或打开一个图库开始",
     "noAssets": "尚未索引任何素材",
     "assetsCount_other": "{{count}} 个素材",
+    "photosCount_other": "{{count}} 张照片",
+    "filesCount_other": "{{count}} 个文件",
     "updated": "更新于 {{time}}"
   },
   "people": {
@@ -173,7 +175,9 @@
     "resetToFit": "重置到适应",
     "failedToLoad": "图片加载失败",
     "loadingLarge": "正在加载大图…",
-    "preparingVideo": "正在准备视频…"
+    "preparingVideo": "正在准备视频…",
+    "burst": "连拍 {{index}}/{{count}}",
+    "versions": "版本 {{index}}/{{count}}"
   },
   "gallery": {
     "loading": "加载中…",
@@ -182,7 +186,18 @@
     "missing": "缺失",
     "missingTip": "原文件已移动或删除",
     "hasPerson": "包含已检测到的人脸",
+    "burstCount": "{{count}} 张连拍",
+    "burstLabel": "连拍 · {{count}}",
+    "burstCover": "封面",
+    "burstFilmstripTitle": "连拍 · {{count}}",
+    "setBurstCover": "设为封面",
+    "versionCount": "{{count}} 个版本",
+    "burstCoverUpdated": "连拍封面已更新",
+    "burstCoverFailed": "无法设置连拍封面",
+    "burstRejectTitle": "移出连拍照片？",
+    "burstRejectMsg": "从图库移出 {{count}} 张（保留封面与已选）。",
     "menu": {
+      "findSimilar": "查找相似照片",
       "edit": "编辑…",
       "compare": "对比",
       "collage": "拼图",
@@ -210,5 +225,14 @@
       "city": "城市"
     },
     "noLocation": "这张照片没有可定位的坐标"
+  },
+  "similar": {
+    "scanning": "正在查找相似照片…",
+    "scanFailed": "相似照片扫描失败",
+    "sessionTitle": "{{count}} 组相似照片",
+    "sessionHint": "勾选建议删除项，再从图库移出。",
+    "removeChecked": "移出已勾选 ({{count}})",
+    "keepAll": "全部保留",
+    "close": "关闭会话"
   }
 }

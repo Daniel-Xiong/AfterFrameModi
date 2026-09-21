@@ -34,6 +34,13 @@ _BROWSE_SELECT_COLUMNS = """\
             rs.raw_asset_id AS set_raw_asset_id,
             primary_assets.stem AS primary_stem,
             set_counts.set_item_count AS set_item_count,
+            cu.unit_id AS capture_unit_id,
+            cu.display_asset_id AS capture_display_asset_id,
+            cum.role AS capture_member_role,
+            bg.group_id AS burst_group_id,
+            bg.display_asset_id AS burst_display_asset_id,
+            bg.member_count AS burst_member_count,
+            bgi.is_keeper AS burst_is_keeper,
             anno.provider AS anno_provider,
             anno.model AS anno_model,
             anno.schema_version AS anno_schema_version,
@@ -60,6 +67,14 @@ _BROWSE_SHARED_JOINS = """\
             GROUP BY set_id
         ) AS set_counts
             ON set_counts.set_id = rs.set_id
+        LEFT JOIN capture_unit_members AS cum
+            ON cum.asset_id = assets.asset_id
+        LEFT JOIN capture_units AS cu
+            ON cu.unit_id = cum.unit_id
+        LEFT JOIN burst_group_items AS bgi
+            ON bgi.unit_id = cu.unit_id
+        LEFT JOIN burst_groups AS bg
+            ON bg.group_id = bgi.group_id
         LEFT JOIN preview_entries
             ON preview_entries.asset_id = assets.asset_id
            AND preview_entries.kind = 'preview'
@@ -264,6 +279,49 @@ def _facet_clauses(filters: dict | None) -> tuple[str, list[object]]:
     return "AND " + " AND ".join(clauses), params
 
 
+_REPRESENTATIVE_CLAUSE = """\
+AND (
+    NOT EXISTS (SELECT 1 FROM capture_unit_members)
+    OR assets.asset_id IN (
+        SELECT cu.display_asset_id
+        FROM capture_units AS cu
+        WHERE NOT EXISTS (
+            SELECT 1 FROM burst_group_items AS bgi WHERE bgi.unit_id = cu.unit_id
+        )
+        UNION
+        SELECT bg.display_asset_id FROM burst_groups AS bg
+    )
+)"""
+
+_REPRESENTATIVE_PREDICATE = """(
+    NOT EXISTS (SELECT 1 FROM capture_unit_members)
+    OR assets.asset_id IN (
+        SELECT cu.display_asset_id
+        FROM capture_units AS cu
+        WHERE NOT EXISTS (
+            SELECT 1 FROM burst_group_items AS bgi WHERE bgi.unit_id = cu.unit_id
+        )
+        UNION
+        SELECT bg.display_asset_id FROM burst_groups AS bg
+    )
+)"""
+
+
+def count_gallery_photos(connection: sqlite3.Connection, status: str = "all") -> int:
+    """Cards shown in the default gallery (capture representatives + burst covers)."""
+    status_clause = _status_clause(status)
+    row = connection.execute(
+        f"""
+        SELECT COUNT(DISTINCT assets.asset_id)
+        FROM image_lookup_registry AS registry
+        JOIN assets ON assets.asset_id = registry.image_asset_id
+        WHERE {status_clause}
+          AND {_REPRESENTATIVE_PREDICATE}
+        """,
+    ).fetchone()
+    return int(row[0] if row else 0)
+
+
 def _status_clause(status: str) -> str:
     """Status → WHERE clause on registry/assets. Shared between the gallery
     browse and the map-points query so the two scopes can never drift."""
@@ -305,12 +363,14 @@ def list_image_assets(
     search: str | None = None,
     sort: str | None = None,
     filters: dict | None = None,
+    representatives: bool = True,
 ) -> list[sqlite3.Row]:
     status_clause = _status_clause(status)
     search_clause, params = _search_clause(search)
     facet_clause, facet_params = _facet_clauses(filters)
     params.extend(facet_params)
     params.extend([limit, offset])
+    representative_clause = _REPRESENTATIVE_CLAUSE if representatives else ""
 
     return connection.execute(
         f"""
@@ -323,6 +383,7 @@ def list_image_assets(
         WHERE {status_clause}
           {search_clause}
           {facet_clause}
+          {representative_clause}
         ORDER BY {_browse_order_clause(sort)}
         LIMIT ? OFFSET ?
         """,

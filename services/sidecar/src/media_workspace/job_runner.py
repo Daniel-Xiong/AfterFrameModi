@@ -18,6 +18,7 @@ from .db import (
     list_assets_for_preview,
     list_people_index_candidates,
     rebuild_candidate_groups,
+    rebuild_capture_graph,
     replace_asset_faces,
     update_job,
     upsert_face_model,
@@ -669,6 +670,7 @@ def run_import_job(
                     connection, str(row["asset_id"]),
                     version_kind="import", commit=False,
                 )
+            rebuild_capture_graph(connection, commit=False)
             connection.commit()
             phase_results.append(_phase_result(resolve_phase, resolve_result))
             phase_cursor += 1
@@ -814,6 +816,7 @@ def run_import_job(
                 force_paths=changed_paths,
             )
             phase_results.append(_phase_result(preview_hd_phase, preview_hd_result))
+        rebuild_capture_graph(connection, commit=True)
         result = {"phase_results": phase_results, "current_phase": None}
         update_job(
             connection,

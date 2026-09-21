@@ -44,6 +44,15 @@ from .db import (
     get_person_group_detail,
     list_person_groups,
     list_similar_person_groups,
+    list_similar_clusters,
+    rebuild_capture_graph,
+    set_burst_keeper,
+    get_capture_unit_for_asset,
+    list_capture_unit_members,
+    list_capture_unit_sidecars,
+    list_burst_siblings,
+    get_burst_for_asset,
+    similar_cluster_for_asset,
     remove_faces_from_group,
     merge_person_groups,
     set_person_group_name,
@@ -185,6 +194,24 @@ def _annotation_from_row(row) -> dict | None:
     }
 
 
+def _capture_browse_fields(row) -> dict:
+    return {
+        "capture_unit_id": row["capture_unit_id"],
+        "capture_display_asset_id": row["capture_display_asset_id"],
+        "capture_member_role": row["capture_member_role"],
+        "burst_group_id": row["burst_group_id"],
+        "burst_display_asset_id": row["burst_display_asset_id"],
+        "burst_member_count": row["burst_member_count"],
+        "burst_is_keeper": bool(row["burst_is_keeper"]) if row["burst_is_keeper"] is not None else None,
+    }
+
+
+def _catalog_preview(catalog, relative_path) -> str | None:
+    if not relative_path:
+        return None
+    return str((catalog.root / relative_path).resolve())
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="media_workspace")
     parser.add_argument("--catalog", type=Path, default=Path("data/default.afcatalog"))
@@ -277,6 +304,11 @@ def build_parser() -> argparse.ArgumentParser:
     # Structured facet filters (all optional, AND-combined). Passed as a single
     # JSON object to keep the surface small and forward-compatible.
     browse.add_argument("--filters", default=None, help="JSON object of facet filters")
+    browse.add_argument(
+        "--include-hidden",
+        action="store_true",
+        help="include version siblings, merged RAW tiles, and burst non-keepers",
+    )
 
     # Lightweight location points for the map. Mirrors the gallery scope
     # (status/collection/search/facets) but ignores filters.geo — the map needs
@@ -312,6 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
     detail_group = detail.add_mutually_exclusive_group(required=True)
     detail_group.add_argument("--asset-id")
     detail_group.add_argument("--image-path", type=Path)
+    detail.add_argument("--person-group", default=None, help="optional person filter for burst sibling highlight")
 
     subparsers.add_parser("list-pending", parents=[common])
 
@@ -347,6 +380,13 @@ def build_parser() -> argparse.ArgumentParser:
     set_rating = subparsers.add_parser("set-asset-rating", parents=[common])
     set_rating.add_argument("--asset-id", action="append", required=True)
     set_rating.add_argument("--rating", type=int, choices=[0, 1, 2, 3, 4, 5], required=True)
+
+    subparsers.add_parser("rebuild-capture-graph", parents=[common])
+    similar_p = subparsers.add_parser("list-similar-clusters", parents=[common])
+    similar_p.add_argument("--asset-id", default=None)
+    burst_keeper = subparsers.add_parser("set-burst-keeper", parents=[common])
+    burst_keeper.add_argument("--group-id", required=True)
+    burst_keeper.add_argument("--asset-id", required=True)
 
     browse_col = subparsers.add_parser("browse-collection", parents=[common])
     browse_col.add_argument("--collection-id", required=True)
@@ -1446,7 +1486,16 @@ def _cmd_browse_images(args, connection, catalog, parser):
     # it must stay read-only — reconciling assets.exists_on_disk is left to the
     # explicit verify-assets sweep. The live `present` value below is what the
     # UI badges/blocks read; the DB flag only gates preview/export batches.
-    for row in list_image_assets(connection, status=args.status, limit=args.limit, offset=args.offset, search=args.search, sort=args.sort, filters=facet_filters):
+    for row in list_image_assets(
+        connection,
+        status=args.status,
+        limit=args.limit,
+        offset=args.offset,
+        search=args.search,
+        sort=args.sort,
+        filters=facet_filters,
+        representatives=not args.include_hidden,
+    ):
         preview_path = None
         if row["preview_relative_path"]:
             preview_path = str((catalog.root / row["preview_relative_path"]).resolve())
@@ -1483,6 +1532,7 @@ def _cmd_browse_images(args, connection, catalog, parser):
                 "set_item_count": row["set_item_count"],
                 "has_face": bool(row["has_face"]),
                 "annotation": _annotation_from_row(row),
+                **_capture_browse_fields(row),
             }
         )
     print(json.dumps(payload, indent=2))
@@ -1679,6 +1729,73 @@ def _cmd_asset_detail(args, connection, catalog, parser):
         }
         for s in used_in_collages
     ]
+
+    unit = get_capture_unit_for_asset(connection, asset_id)
+    payload["capture_unit_id"] = str(unit["unit_id"]) if unit else None
+    payload["capture_display_asset_id"] = str(unit["display_asset_id"]) if unit else None
+    payload["capture_members"] = []
+    payload["capture_sidecars"] = []
+    if unit:
+        payload["capture_members"] = [
+            {
+                "asset_id": m["asset_id"],
+                "role": m["role"],
+                "asset_type": m["asset_type"],
+                "stem": m["stem"],
+                "image_path": m["canonical_path"],
+                "preview_path": _catalog_preview(catalog, m["preview_relative_path"]),
+            }
+            for m in list_capture_unit_members(connection, str(unit["unit_id"]))
+        ]
+        payload["capture_sidecars"] = list_capture_unit_sidecars(connection, str(unit["unit_id"]))
+        burst = get_burst_for_asset(connection, asset_id)
+        payload["burst_group_id"] = str(burst["group_id"]) if burst else None
+        payload["burst_member_count"] = int(burst["member_count"]) if burst else 0
+        payload["burst_is_keeper"] = bool(burst["is_keeper"]) if burst else None
+        payload["burst_siblings"] = []
+        if burst:
+            person_group = getattr(args, "person_group", None)
+            payload["burst_siblings"] = [
+                {
+                    "asset_id": s["asset_id"],
+                    "stem": s["stem"],
+                    "image_path": s["canonical_path"],
+                    "is_keeper": bool(s["is_keeper"]),
+                    "preview_path": _catalog_preview(catalog, s["preview_relative_path"]),
+                    "matches_active_filter": bool(s["matches_active_filter"]),
+                }
+                for s in list_burst_siblings(
+                    connection,
+                    str(burst["group_id"]),
+                    asset_id,
+                    person_group_id=person_group,
+                )
+            ]
+            payload["burst_all_members"] = [
+                {
+                    "asset_id": s["asset_id"],
+                    "stem": s["stem"],
+                    "image_path": s["canonical_path"],
+                    "is_keeper": bool(s["is_keeper"]),
+                    "preview_path": _catalog_preview(catalog, s["preview_relative_path"]),
+                    "matches_active_filter": bool(s["matches_active_filter"]),
+                }
+                for s in list_burst_siblings(
+                    connection,
+                    str(burst["group_id"]),
+                    None,
+                    person_group_id=person_group,
+                )
+            ]
+    else:
+        payload["burst_group_id"] = None
+        payload["burst_member_count"] = 0
+        payload["burst_is_keeper"] = None
+        payload["burst_siblings"] = []
+
+    cluster = similar_cluster_for_asset(connection, asset_id)
+    payload["similar_cluster"] = cluster
+
     print(json.dumps(payload, indent=2))
     return 0
 
@@ -1945,6 +2062,27 @@ def _cmd_set_asset_rating(args, connection, catalog, parser):
     return 0
 
 
+def _cmd_rebuild_capture_graph(args, connection, catalog, parser):
+    stats = rebuild_capture_graph(connection)
+    print(json.dumps(stats, indent=2))
+    return 0
+
+
+def _cmd_list_similar_clusters(args, connection, catalog, parser):
+    if args.asset_id:
+        payload = similar_cluster_for_asset(connection, args.asset_id)
+    else:
+        payload = list_similar_clusters(connection)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def _cmd_set_burst_keeper(args, connection, catalog, parser):
+    payload = set_burst_keeper(connection, args.group_id, args.asset_id)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def _cmd_browse_collection(args, connection, catalog, parser):
     payload = []
     for row in browse_collection(connection, args.collection_id, limit=args.limit, offset=args.offset):
@@ -1983,6 +2121,7 @@ def _cmd_browse_collection(args, connection, catalog, parser):
                 "primary_stem": row["primary_stem"],
                 "set_item_count": row["set_item_count"],
                 "annotation": _annotation_from_row(row),
+                **_capture_browse_fields(row),
             }
         )
     print(json.dumps(payload, indent=2))
@@ -2071,6 +2210,9 @@ COMMAND_HANDLERS = {
     "collection-add-items": _cmd_collection_add_items,
     "collection-remove-items": _cmd_collection_remove_items,
     "set-asset-rating": _cmd_set_asset_rating,
+    "rebuild-capture-graph": _cmd_rebuild_capture_graph,
+    "list-similar-clusters": _cmd_list_similar_clusters,
+    "set-burst-keeper": _cmd_set_burst_keeper,
     "browse-collection": _cmd_browse_collection,
 }
 

@@ -1,9 +1,10 @@
-import { ChevronLeft, ChevronRight, Minus, Pencil, Plus, SwatchBook, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Images, Minus, Pencil, Plus, SwatchBook, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fileName, localFileUrl, httpMediaUrl } from "../utils/format";
 import { buildLightboxSources, resolveLightboxLogicalSize } from "./lightboxView";
 import VideoPlayer from "./VideoPlayer";
+import AssetFilmstrip from "./AssetFilmstrip";
 
 const MAX_SCALE = 8;
 const MIN_SCALE = 0.02;
@@ -67,6 +68,12 @@ export default function Lightbox({
   onEdit,
   onClose,
   onIndexChange,
+  burstMembers = [],
+  burstKeeperId = null,
+  onBurstFrameSelect,
+  onSetBurstCover,
+  versionItems = [],
+  onVersionSelect,
 }) {
   const { t } = useTranslation("nav");
   const viewportRef = useRef(null);
@@ -96,6 +103,7 @@ export default function Lightbox({
   // H.264 proxy fallback for videos Chromium can't decode (e.g. 10-bit HEVC).
   const [proxySrc, setProxySrc] = useState(null);
   const [proxyPending, setProxyPending] = useState(false);
+  const [filmstripMode, setFilmstripMode] = useState("none");
 
   const clampedIndex = Math.max(0, Math.min(currentIndex, Math.max((items?.length || 1) - 1, 0)));
   const currentItem = items?.[clampedIndex] || null;
@@ -365,6 +373,89 @@ export default function Lightbox({
     return () => viewport.removeEventListener("wheel", handleWheel);
   }, [naturalSize, open]);
 
+  const burstIndex = Math.max(0, burstMembers.findIndex((m) => m.asset_id === currentItem?.asset_id));
+  const versionIndex = Math.max(0, versionItems.findIndex((m) => m.asset_id === currentItem?.asset_id));
+
+  useEffect(() => {
+    if (!open) setFilmstripMode("none");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleKey(event) {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key;
+      if (key === "Escape") {
+        if (filmstripMode !== "none") {
+          event.preventDefault();
+          event.stopPropagation();
+          setFilmstripMode("none");
+        }
+        return;
+      }
+      if (key.toLowerCase() === "b" && burstMembers.length > 1) {
+        event.preventDefault();
+        setFilmstripMode((mode) => (mode === "burst" ? "none" : "burst"));
+        return;
+      }
+      if (key.toLowerCase() === "v" && versionItems.length > 1) {
+        event.preventDefault();
+        setFilmstripMode((mode) => (mode === "version" ? "none" : "version"));
+        return;
+      }
+      if (key.toLowerCase() === "f" && burstMembers.length > 1 && filmstripMode === "burst") {
+        event.preventDefault();
+        onSetBurstCover?.(currentItem?.asset_id);
+        return;
+      }
+      const stepBurst = (dir) => {
+        if (!burstMembers.length) return;
+        const next = (burstIndex + dir + burstMembers.length) % burstMembers.length;
+        onBurstFrameSelect?.(burstMembers[next].asset_id);
+      };
+      const stepVersion = (dir) => {
+        if (!versionItems.length) return;
+        const next = (versionIndex + dir + versionItems.length) % versionItems.length;
+        onVersionSelect?.(versionItems[next].asset_id);
+      };
+      if (filmstripMode === "burst" && (key === "ArrowLeft" || key === "ArrowRight")) {
+        event.preventDefault();
+        event.stopPropagation();
+        stepBurst(key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+      if (filmstripMode === "version" && (key === "ArrowLeft" || key === "ArrowRight")) {
+        event.preventDefault();
+        event.stopPropagation();
+        stepVersion(key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+      if (key === "[" || key === "]") {
+        event.preventDefault();
+        stepVersion(key === "[" ? -1 : 1);
+        return;
+      }
+      if (key === "{" || key === "}") {
+        event.preventDefault();
+        stepBurst(key === "{" ? -1 : 1);
+        return;
+      }
+    }
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+  }, [
+    open,
+    filmstripMode,
+    burstMembers,
+    burstIndex,
+    versionItems,
+    versionIndex,
+    currentItem?.asset_id,
+    onBurstFrameSelect,
+    onVersionSelect,
+    onSetBurstCover,
+  ]);
+
   if (!open || !currentItem) return null;
 
   function handleImageLoad(event) {
@@ -538,7 +629,23 @@ export default function Lightbox({
             {(metaWidth > 0 && metaHeight > 0) ? ` · ${metaWidth} × ${metaHeight}` : ""}
           </div>
         </div>
-        <div className="pointer-events-auto flex items-center gap-2">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
+          {burstMembers.length > 1 ? (
+            <ActionPill
+              icon={Images}
+              label={t("lightbox.burst", { index: burstIndex + 1, count: burstMembers.length })}
+              active={filmstripMode === "burst"}
+              onClick={() => setFilmstripMode((mode) => (mode === "burst" ? "none" : "burst"))}
+            />
+          ) : null}
+          {versionItems.length > 1 ? (
+            <ActionPill
+              icon={SwatchBook}
+              label={t("lightbox.versions", { index: versionIndex + 1, count: versionItems.length })}
+              active={filmstripMode === "version"}
+              onClick={() => setFilmstripMode((mode) => (mode === "version" ? "none" : "version"))}
+            />
+          ) : null}
           {onEdit && !isVideo && (
             <ActionPill
               icon={Pencil}
@@ -675,6 +782,27 @@ export default function Lightbox({
           </div>
         ) : null}
       </div>
+
+      {!isVideo && filmstripMode !== "none" ? (
+        <div className="pointer-events-auto shrink-0 border-t border-white/10 px-6 py-2" onClick={(e) => e.stopPropagation()}>
+          {filmstripMode === "burst" ? (
+            <AssetFilmstrip
+              items={burstMembers}
+              selectedId={currentItem?.asset_id}
+              keeperId={burstKeeperId}
+              showKeeperBadge
+              onSelect={(id) => onBurstFrameSelect?.(id)}
+            />
+          ) : null}
+          {filmstripMode === "version" ? (
+            <AssetFilmstrip
+              items={versionItems}
+              selectedId={currentItem?.asset_id}
+              onSelect={(id) => onVersionSelect?.(id)}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {!isVideo && (
         <div

@@ -79,6 +79,16 @@ def init_db(connection: sqlite3.Connection) -> None:
             migrate(connection, int(row["schema_version"]), SCHEMA_VERSION)
             _apply_latest_schema(connection)
 
+        from .capture_graph import rebuild_capture_graph
+        has_registry = connection.execute(
+            "SELECT 1 FROM image_lookup_registry LIMIT 1"
+        ).fetchone() is not None
+        has_units = connection.execute(
+            "SELECT 1 FROM capture_units LIMIT 1"
+        ).fetchone() is not None
+        if has_registry and not has_units:
+            rebuild_capture_graph(connection, commit=False)
+
         connection.commit()
     except Exception:
         connection.rollback()

@@ -1166,6 +1166,12 @@ function buildAppMenu() {
       ],
     },
     {
+      label: t("menu.gallery"),
+      submenu: [
+        { label: t("menu.findSimilar"), click: () => sendMenuAction("gallery:find-similar") },
+      ],
+    },
+    {
       label: t("menu.edit"),
       submenu: [
         // Text-editing roles target the focused element natively.

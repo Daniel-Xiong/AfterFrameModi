@@ -69,8 +69,22 @@ function register({ ipcMain, commands, getCatalogState }) {
     return await commands.assetDetail({ imagePath });
   });
 
-  ipcMain.handle("workspace:detail-by-id", async (_event, assetId) => {
-    return await commands.assetDetail({ assetId });
+  ipcMain.handle("workspace:detail-by-id", async (_event, assetId, options) => {
+    const opts = options && typeof options === "object" ? options : {};
+    return await commands.assetDetail({ assetId, personGroup: opts.personGroup });
+  });
+
+  ipcMain.handle("workspace:list-similar-clusters", async (_event, options) => {
+    const { currentCatalogPath, catalogHasDb } = getCatalogState();
+    if (!currentCatalogPath || !catalogHasDb()) return [];
+    try {
+      const payload = await commands.listSimilarClusters(options || {});
+      if (Array.isArray(payload)) return payload;
+      return payload ? [payload] : [];
+    } catch (err) {
+      console.warn("[workspace:list-similar-clusters] sidecar error:", err.message);
+      return [];
+    }
   });
 
   ipcMain.handle("workspace:list-people-groups", async (_event, options) => {
@@ -93,6 +107,12 @@ function register({ ipcMain, commands, getCatalogState }) {
       console.warn("[workspace:similar-people-groups] sidecar error:", err.message);
       return [];
     }
+  });
+
+  ipcMain.handle("workspace:set-burst-keeper", async (_event, options) => {
+    const { currentCatalogPath, catalogHasDb } = getCatalogState();
+    if (!currentCatalogPath || !catalogHasDb()) throw new Error("Open a catalog first.");
+    return await commands.setBurstKeeper(options || {});
   });
 
   ipcMain.handle("workspace:people-group-detail", async (_event, options) => {

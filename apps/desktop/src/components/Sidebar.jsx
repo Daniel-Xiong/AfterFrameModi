@@ -61,7 +61,14 @@ export default function Sidebar({
   const { t } = useTranslation("nav");
   const browse = navItems(summary);
   const rootSummary = [];
-  if (Number(summary?.image_assets ?? 0)) rootSummary.push(t("sidebar.assetsCount", { count: summary.image_assets }));
+  const photoCount = summary?.photo_count ?? summary?.image_assets ?? 0;
+  const fileCount = summary?.image_assets ?? 0;
+  if (Number(photoCount)) {
+    rootSummary.push(t("sidebar.photosCount", { count: photoCount }));
+    if (Number(fileCount) > Number(photoCount)) {
+      rootSummary.push(t("sidebar.filesCount", { count: fileCount }));
+    }
+  }
   if (summary?.updated_at) rootSummary.push(t("sidebar.updated", { time: formatTimestamp(summary.updated_at) }));
 
   const [creatingFolder, setCreatingFolder] = useState(false);

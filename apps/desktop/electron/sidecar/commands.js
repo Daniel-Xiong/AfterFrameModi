@@ -56,9 +56,22 @@ function createSidecarCommands(callJson) {
       ]).then((rows) => rows || []);
     },
 
-    assetDetail({ assetId, imagePath } = {}) {
-      if (assetId) return callJson(["asset-detail", "--asset-id", String(assetId)]);
-      return callJson(["asset-detail", "--image-path", String(imagePath)]);
+    assetDetail({ assetId, imagePath, personGroup } = {}) {
+      const argv = assetId
+        ? ["asset-detail", "--asset-id", String(assetId)]
+        : ["asset-detail", "--image-path", String(imagePath)];
+      if (personGroup) argv.push("--person-group", String(personGroup));
+      return callJson(argv);
+    },
+
+    listSimilarClusters({ assetId } = {}) {
+      const argv = ["list-similar-clusters"];
+      if (assetId) argv.push("--asset-id", String(assetId));
+      return callJson(argv).then((payload) => {
+        if (Array.isArray(payload)) return payload;
+        if (payload?.asset_ids?.length) return [payload];
+        return [];
+      });
     },
 
     listPeopleGroups({ state } = {}) {
@@ -71,6 +84,14 @@ function createSidecarCommands(callJson) {
       const argv = ["similar-people-groups", "--group-id", String(groupId)];
       if (limit) argv.push("--limit", String(limit));
       return callJson(argv).then((rows) => rows || []);
+    },
+
+    setBurstKeeper({ groupId, assetId } = {}) {
+      return callJson([
+        "set-burst-keeper",
+        "--group-id", String(groupId),
+        "--asset-id", String(assetId),
+      ]);
     },
 
     peopleGroupDetail({ groupId, faceLimit, faceOffset } = {}) {
